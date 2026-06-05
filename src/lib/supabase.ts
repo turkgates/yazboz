@@ -1,30 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Game, Round, Profile } from '@/types'
+import type { Game, Round, Profile, SavedPlayer } from '@/types'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-const isValidUrl = (url: string) => {
-  if (!url) return false
-  try {
-    new URL(url)
-    return url.startsWith('http://') || url.startsWith('https://')
-  } catch {
-    return false
-  }
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('VITE_SUPABASE_URL ve VITE_SUPABASE_ANON_KEY .env.local dosyasında tanımlı olmalı')
 }
 
-const FALLBACK_URL = 'https://placeholder.supabase.co'
-const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.ZodTkPlaceholder'
-
-if (!isValidUrl(supabaseUrl)) {
-  console.warn('⚠️ Supabase URL eksik. .env.local dosyasına VITE_SUPABASE_URL ve VITE_SUPABASE_ANON_KEY ekleyin.')
-}
-
-export const supabase = createClient(
-  isValidUrl(supabaseUrl) ? supabaseUrl : FALLBACK_URL,
-  supabaseAnonKey || FALLBACK_KEY
-)
+export const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function getCurrentUser() {
   const { data: { user } } = await supabase.auth.getUser()
@@ -107,10 +91,71 @@ export async function insertRound(roundData: Omit<Round, 'created_at'>) {
     .single<Round>()
 }
 
+export async function updateRound(roundId: string, updates: Partial<Omit<Round, 'id' | 'game_id' | 'created_at'>>) {
+  return supabase
+    .from('rounds')
+    .update(updates as Record<string, unknown>)
+    .eq('id', roundId)
+    .select()
+    .single<Round>()
+}
+
+export async function deleteRound(roundId: string) {
+  return supabase.from('rounds').delete().eq('id', roundId)
+}
+
 export async function fetchProfile(userId: string) {
   return supabase
     .from('profiles')
     .select('*')
     .eq('id', userId)
     .single<Profile>()
+}
+
+export async function fetchPlayers(userId: string) {
+  return supabase
+    .from('players')
+    .select('*')
+    .eq('user_id', userId)
+    .order('name')
+    .returns<SavedPlayer[]>()
+}
+
+export async function createPlayer(player: Omit<SavedPlayer, 'created_at'>) {
+  return supabase
+    .from('players')
+    .insert(player as Record<string, unknown>)
+    .select()
+    .single<SavedPlayer>()
+}
+
+export async function updatePlayer(playerId: string, updates: Partial<Pick<SavedPlayer, 'name' | 'avatar_url'>>) {
+  return supabase
+    .from('players')
+    .update(updates as Record<string, unknown>)
+    .eq('id', playerId)
+    .select()
+    .single<SavedPlayer>()
+}
+
+export async function deletePlayer(playerId: string) {
+  return supabase.from('players').delete().eq('id', playerId)
+}
+
+export async function uploadAvatar(userId: string, file: File): Promise<string | null> {
+  const ext = file.name.split('.').pop() || 'jpg'
+  const path = `${userId}/${Date.now()}.${ext}`
+
+  const { error } = await supabase.storage.from('avatars').upload(path, file, {
+    upsert: true,
+    contentType: file.type,
+  })
+
+  if (error) {
+    console.error('Avatar upload error:', error)
+    return null
+  }
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+  return data.publicUrl
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchActiveGames, fetchFinishedGames, signOut } from '@/lib/supabase'
 import type { Game } from '@/types'
-import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock } from 'lucide-react'
+import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Users, Home } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 
 export const Route = createFileRoute('/home')({
@@ -49,7 +49,6 @@ function HomePage() {
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
-      {/* Header */}
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center justify-between py-4 max-w-lg mx-auto">
           <div>
@@ -57,16 +56,6 @@ function HomePage() {
             <p className="text-xs text-[#718096] mt-0.5">{userEmail}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Link to="/stats">
-              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-white transition-colors">
-                <BarChart2 size={18} />
-              </button>
-            </Link>
-            <Link to="/settings">
-              <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-white transition-colors">
-                <Settings size={18} />
-              </button>
-            </Link>
             <button
               onClick={handleSignOut}
               className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-red-400 transition-colors"
@@ -77,17 +66,38 @@ function HomePage() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
-        {/* New Game Button */}
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={() => navigate({ to: '/new-game' })}
-          className="w-full bg-[#e94560] hover:bg-[#c73652] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 text-lg shadow-lg shadow-[#e94560]/20 transition-colors mb-6"
-        >
-          <Plus size={24} />
-          Yeni Oyun Başlat
-        </motion.button>
+      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full pb-24">
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => navigate({ to: '/new-game' })}
+            className="col-span-2 bg-[#e94560] hover:bg-[#c73652] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 text-lg shadow-lg shadow-[#e94560]/20 transition-colors"
+          >
+            <Plus size={24} />
+            Yeni Oyun Başlat
+          </motion.button>
+
+          <Link to="/players" className="block">
+            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
+              <Users size={22} className="text-[#e94560]" />
+              <span className="text-white text-sm font-semibold">Oyuncularım</span>
+            </button>
+          </Link>
+
+          <Link to="/stats" className="block">
+            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
+              <BarChart2 size={22} className="text-[#e94560]" />
+              <span className="text-white text-sm font-semibold">İstatistikler</span>
+            </button>
+          </Link>
+
+          <Link to="/settings" className="col-span-2 block">
+            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex items-center justify-center gap-2 transition-colors">
+              <Settings size={20} className="text-[#a0aec0]" />
+              <span className="text-white text-sm font-semibold">Ayarlar</span>
+            </button>
+          </Link>
+        </div>
 
         {loading ? (
           <div className="flex justify-center py-12">
@@ -95,7 +105,6 @@ function HomePage() {
           </div>
         ) : (
           <>
-            {/* Active Games */}
             {activeGames.length > 0 && (
               <section className="mb-6">
                 <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -117,7 +126,6 @@ function HomePage() {
               </section>
             )}
 
-            {/* Finished Games */}
             {finishedGames.length > 0 && (
               <section>
                 <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -140,7 +148,7 @@ function HomePage() {
             )}
 
             {activeGames.length === 0 && finishedGames.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className="text-6xl mb-4">🃏</div>
                 <p className="text-white font-medium mb-2">Henüz oyun yok</p>
                 <p className="text-[#718096] text-sm">Yukarıdaki butona basarak ilk oyununuzu başlatın!</p>
@@ -149,6 +157,27 @@ function HomePage() {
           </>
         )}
       </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-[#16213e] border-t border-[#2d3748] safe-bottom z-40">
+        <div className="max-w-lg mx-auto flex items-center justify-around py-2">
+          <Link to="/home" className="flex flex-col items-center gap-1 px-4 py-2 text-[#e94560]">
+            <Home size={20} />
+            <span className="text-[10px] font-medium">Ana Sayfa</span>
+          </Link>
+          <Link to="/players" className="flex flex-col items-center gap-1 px-4 py-2 text-[#718096] hover:text-white transition-colors">
+            <Users size={20} />
+            <span className="text-[10px] font-medium">Oyuncularım</span>
+          </Link>
+          <Link to="/stats" className="flex flex-col items-center gap-1 px-4 py-2 text-[#718096] hover:text-white transition-colors">
+            <BarChart2 size={20} />
+            <span className="text-[10px] font-medium">İstatistikler</span>
+          </Link>
+          <Link to="/settings" className="flex flex-col items-center gap-1 px-4 py-2 text-[#718096] hover:text-white transition-colors">
+            <Settings size={20} />
+            <span className="text-[10px] font-medium">Ayarlar</span>
+          </Link>
+        </div>
+      </nav>
     </div>
   )
 }

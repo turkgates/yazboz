@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase, signIn, signUp, resetPassword } from '@/lib/supabase'
+import { supabase, signIn, resetPassword } from '@/lib/supabase'
 import { Eye, EyeOff, Mail, Lock, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
 
 export const Route = createFileRoute('/auth')({
@@ -36,7 +36,10 @@ function AuthPage() {
     try {
       if (mode === 'forgot') {
         const { error } = await resetPassword(email)
-        if (error) throw error
+        if (error) {
+          console.error('Reset password error:', error)
+          throw error
+        }
         setSuccess('Şifre sıfırlama bağlantısı email adresinize gönderildi.')
       } else if (mode === 'register') {
         if (password !== confirmPassword) {
@@ -47,15 +50,32 @@ function AuthPage() {
           setError('Şifre en az 6 karakter olmalıdır.')
           return
         }
-        const { error } = await signUp(email, password)
-        if (error) throw error
-        setSuccess('Hesabınız oluşturuldu! Email adresinizi doğrulayın.')
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: undefined,
+            data: {},
+          },
+        })
+
+        if (error) {
+          console.error('Signup error:', error)
+          throw error
+        }
+
+        console.log('Signup success:', data)
+        navigate({ to: '/home' })
       } else {
         const { error } = await signIn(email, password)
-        if (error) throw error
+        if (error) {
+          console.error('Signin error:', error)
+          throw error
+        }
         navigate({ to: '/home' })
       }
     } catch (err: unknown) {
+      console.error('Auth error:', err)
       const message = err instanceof Error ? err.message : 'Bir hata oluştu.'
       if (message.includes('Invalid login credentials')) {
         setError('Email veya şifre hatalı.')

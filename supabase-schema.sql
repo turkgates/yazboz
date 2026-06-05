@@ -97,3 +97,45 @@ create policy "Kullanıcı kendi oyunlarının ellerini güncelleyebilir"
   on rounds for update using (
     game_id in (select id from games where user_id = auth.uid())
   );
+
+create policy "Kullanıcı kendi oyunlarının ellerini silebilir"
+  on rounds for delete using (
+    game_id in (select id from games where user_id = auth.uid())
+  );
+
+-- Oyuncu listesi
+create table if not exists players (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  name text not null,
+  avatar_url text,
+  created_at timestamptz default now()
+);
+
+create index if not exists players_user_id_idx on players(user_id);
+
+alter table players enable row level security;
+
+create policy "Kullanıcı kendi oyuncularını yönetir"
+  on players for all using (auth.uid() = user_id);
+
+-- Avatar storage
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "Avatar yükle"
+  on storage.objects for insert
+  with check (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "Avatar görüntüle"
+  on storage.objects for select
+  using (bucket_id = 'avatars');
+
+create policy "Avatar güncelle"
+  on storage.objects for update
+  using (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "Avatar sil"
+  on storage.objects for delete
+  using (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);

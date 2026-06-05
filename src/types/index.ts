@@ -82,6 +82,14 @@ export interface Profile {
   created_at: string
 }
 
+export interface SavedPlayer {
+  id: string
+  user_id: string
+  name: string
+  avatar_url: string | null
+  created_at: string
+}
+
 export interface GameSummary {
   game: Game
   rounds: Round[]

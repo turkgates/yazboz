@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PlayersRouteImport } from './routes/players'
 import { Route as NewGameRouteImport } from './routes/new-game'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -26,6 +27,11 @@ const StatsRoute = StatsRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlayersRoute = PlayersRouteImport.update({
+  id: '/players',
+  path: '/players',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NewGameRoute = NewGameRouteImport.update({
@@ -64,6 +70,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/home': typeof HomeRoute
   '/new-game': typeof NewGameRoute
+  '/players': typeof PlayersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/home': typeof HomeRoute
   '/new-game': typeof NewGameRoute
+  '/players': typeof PlayersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/home': typeof HomeRoute
   '/new-game': typeof NewGameRoute
+  '/players': typeof PlayersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/home'
     | '/new-game'
+    | '/players'
     | '/settings'
     | '/stats'
     | '/game-over/$gameId'
@@ -107,6 +117,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/home'
     | '/new-game'
+    | '/players'
     | '/settings'
     | '/stats'
     | '/game-over/$gameId'
@@ -117,6 +128,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/home'
     | '/new-game'
+    | '/players'
     | '/settings'
     | '/stats'
     | '/game-over/$gameId'
@@ -128,6 +140,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   HomeRoute: typeof HomeRoute
   NewGameRoute: typeof NewGameRoute
+  PlayersRoute: typeof PlayersRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
   GameOverGameIdRoute: typeof GameOverGameIdRoute
@@ -148,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/players': {
+      id: '/players'
+      path: '/players'
+      fullPath: '/players'
+      preLoaderRoute: typeof PlayersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/new-game': {
@@ -200,6 +220,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   HomeRoute: HomeRoute,
   NewGameRoute: NewGameRoute,
+  PlayersRoute: PlayersRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
   GameOverGameIdRoute: GameOverGameIdRoute,

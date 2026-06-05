@@ -11,6 +11,8 @@ interface GameStore {
 
   startGame: (game: Game) => void
   addRound: (roundId: string, roundNumber: number, input: RoundInput) => void
+  updateRoundInStore: (roundId: string, input: RoundInput) => void
+  deleteRoundInStore: (roundId: string) => void
   finishGame: () => void
   loadGame: (game: Game, rounds: Round[]) => void
   clearGame: () => void
@@ -61,6 +63,43 @@ export const useGameStore = create<GameStore>()(
         }
 
         set((s) => ({ rounds: [...s.rounds, round] }))
+      },
+
+      updateRoundInStore: (roundId, input) => {
+        const state = get()
+        if (!state.currentGame) return
+
+        const scores = calculateAllScores(
+          input.playerResults,
+          input.color,
+          input.okeyThrown,
+          input.doubleFinish,
+          state.currentGame.settings
+        )
+
+        set((s) => ({
+          rounds: s.rounds.map((r) =>
+            r.id === roundId
+              ? {
+                  ...r,
+                  color: input.color,
+                  okey_thrown: input.okeyThrown,
+                  double_finish: input.doubleFinish,
+                  scores,
+                }
+              : r
+          ),
+        }))
+      },
+
+      deleteRoundInStore: (roundId) => {
+        set((s) => {
+          const filtered = s.rounds.filter((r) => r.id !== roundId)
+          const renumbered = filtered
+            .sort((a, b) => a.round_number - b.round_number)
+            .map((r, i) => ({ ...r, round_number: i + 1 }))
+          return { rounds: renumbered }
+        })
       },
 
       finishGame: () =>
