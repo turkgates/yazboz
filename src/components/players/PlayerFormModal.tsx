@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Camera, X } from 'lucide-react'
 import { supabase, createPlayer, updatePlayer, uploadAvatar } from '@/lib/supabase'
 import type { SavedPlayer } from '@/types'
-import { PlayerAvatar } from '@/components/ui/PlayerAvatar'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { v4 as uuidv4 } from 'uuid'
 
 interface PlayerFormModalProps {
@@ -114,7 +114,7 @@ export function PlayerFormModal({ player, onClose, onSaved }: PlayerFormModalPro
           </div>
 
           <div className="flex flex-col items-center gap-3 mb-5">
-            <PlayerAvatar name={name || 'Oyuncu'} avatarUrl={avatarUrl} size="lg" />
+            <PlayerAvatar name={name || 'Oyuncu'} avatarUrl={avatarUrl} size={56} />
             <button
               type="button"
               onClick={() => fileRef.current?.click()}

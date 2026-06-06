@@ -8,6 +8,7 @@ import { Home, RotateCcw, ArrowLeft } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import type { Game, SavedPlayer } from '@/types'
 import { formatGameDate } from '@/lib/dateUtils'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 
 export const Route = createFileRoute('/game-over/$gameId')({
   beforeLoad: async () => {
@@ -67,8 +68,8 @@ function GameOverPage() {
     navigate({ to: '/game/$gameId', params: { gameId: newGameId } })
   }
 
-  const playerIdByName = (name: string) =>
-    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
+  const playerDataByName = (name: string) =>
+    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())
 
   if (loading || !currentGame) {
     return (
@@ -114,8 +115,20 @@ function GameOverPage() {
         className="text-center mb-8"
       >
         <div className="text-7xl mb-3">🏆</div>
+        <div className="flex justify-center mb-3">
+          <PlayerAvatar
+            name={winner.name}
+            avatarUrl={playerDataByName(winner.name)?.avatar_url}
+            size={64}
+            onClick={
+              playerDataByName(winner.name)?.id
+                ? () => navigate({ to: '/player/$playerId', params: { playerId: playerDataByName(winner.name)!.id } })
+                : undefined
+            }
+          />
+        </div>
         <h1 className="text-3xl font-black text-white mb-1">
-          <PlayerNameLink name={winner.name} playerId={playerIdByName(winner.name)} />
+          <PlayerNameLink name={winner.name} playerId={playerDataByName(winner.name)?.id} />
         </h1>
         <p className="text-[#f5a623] font-semibold">kazandı!</p>
         <p className="text-[#718096] text-sm mt-1">Toplam: {winner.total} puan</p>
@@ -132,9 +145,19 @@ function GameOverPage() {
           >
             <div className="flex items-center gap-3">
               <span className="text-2xl">{medals[i]}</span>
+              <PlayerAvatar
+                name={item.name}
+                avatarUrl={playerDataByName(item.name)?.avatar_url}
+                size={64}
+                onClick={
+                  playerDataByName(item.name)?.id
+                    ? () => navigate({ to: '/player/$playerId', params: { playerId: playerDataByName(item.name)!.id } })
+                    : undefined
+                }
+              />
               <div>
                 <p className="text-white font-semibold">
-                  <PlayerNameLink name={item.name} playerId={playerIdByName(item.name)} />
+                  <PlayerNameLink name={item.name} playerId={playerDataByName(item.name)?.id} />
                 </p>
                 <p className="text-[#718096] text-xs">{item.rank}. sıra</p>
               </div>

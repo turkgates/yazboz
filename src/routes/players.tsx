@@ -11,7 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { supabase, fetchPlayers, deletePlayer } from '@/lib/supabase'
 import type { SavedPlayer } from '@/types'
 import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react'
-import { PlayerAvatar } from '@/components/ui/PlayerAvatar'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerFormModal } from '@/components/players/PlayerFormModal'
 
 export const Route = createFileRoute('/players')({
@@ -109,7 +109,7 @@ function PlayersPage() {
                   onClick={() => navigate({ to: '/player/$playerId', params: { playerId: player.id } })}
                   className="flex items-center gap-3 flex-1 min-w-0 text-left"
                 >
-                  <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} />
+                  <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={48} />
                   <p className="text-white font-medium flex-1 truncate">{player.name}</p>
                 </button>
                 <button

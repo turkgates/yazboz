@@ -6,7 +6,7 @@ import { useSettingsStore, useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, Plus, Minus, User, Play, Check } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import type { Game, SavedPlayer } from '@/types'
-import { PlayerAvatar } from '@/components/ui/PlayerAvatar'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 
 export const Route = createFileRoute('/new-game')({
   beforeLoad: async () => {
@@ -200,7 +200,7 @@ function NewGamePage() {
                           : 'border-[#2d3748] bg-[#16213e] hover:border-[#4a5568]'
                     }`}
                   >
-                    <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size="sm" />
+                    <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={36} />
                     <span className="text-white text-sm font-medium flex-1">{player.name}</span>
                     {selected && <Check size={18} className="text-[#e94560]" />}
                   </button>

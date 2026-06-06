@@ -8,7 +8,7 @@ import {
 } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { ArrowLeft, Pencil, Trophy, Target, TrendingDown, TrendingUp, Flame, Zap } from 'lucide-react'
-import { PlayerAvatar } from '@/components/ui/PlayerAvatar'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerFormModal } from '@/components/players/PlayerFormModal'
 import { calculateTotals, getLeader, detectOkeyBurnType } from '@/lib/calculations'
 import { formatDate } from '@/lib/dateUtils'
@@ -172,7 +172,7 @@ function PlayerProfilePage() {
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
         {/* Üst kısım */}
         <div className="flex flex-col items-center mb-6">
-          <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size="xl" className="mb-3" />
+          <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={96} className="mb-3" />
           <h2 className="text-white text-xl font-bold mb-3">{player.name}</h2>
           <button
             onClick={() => setShowEditModal(true)}

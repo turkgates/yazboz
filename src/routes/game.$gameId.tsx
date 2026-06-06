@@ -18,6 +18,7 @@ import { calculateAllScores } from '@/lib/calculations'
 import { v4 as uuidv4 } from 'uuid'
 import { formatGameDate } from '@/lib/dateUtils'
 import { RoundEntryModal } from '@/components/game/RoundEntryModal'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 
 export const Route = createFileRoute('/game/$gameId')({
   beforeLoad: async () => {
@@ -205,15 +206,16 @@ function GamePage() {
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top shrink-0">
         <div className="flex items-center justify-between py-3 max-w-lg mx-auto">
           <button
-            onClick={() => navigate({ to: '/home' })}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0]"
+            onClick={() => navigate({ to: isFinished ? '/stats' : '/home' })}
+            className="flex items-center gap-1.5 text-[#a0aec0] hover:text-white transition-colors shrink-0"
           >
             <ArrowLeft size={18} />
+            {isFinished && <span className="text-sm font-medium">Geri</span>}
           </button>
           <div className="text-center flex-1 min-w-0 px-2">
             {isFinished ? (
-              <span className="inline-block bg-[#f5a623]/20 text-[#f5a623] text-xs font-semibold px-2 py-0.5 rounded-full mb-1">
-                Tamamlanan Oyun
+              <span className="inline-block bg-[#f5a623]/25 text-[#f5a623] text-xs font-bold px-3 py-1 rounded-full mb-1 border border-[#f5a623]/40">
+                ✓ Tamamlanan Oyun
               </span>
             ) : (
               <p className="text-white font-semibold text-sm">
@@ -227,13 +229,17 @@ function GamePage() {
             )}
             <p className="text-[#718096] text-xs">{formatGameDate(currentGame.created_at)}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-white transition-colors"
-          >
-            <Settings size={18} />
-          </button>
+          {!isFinished ? (
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-white transition-colors shrink-0"
+            >
+              <Settings size={18} />
+            </button>
+          ) : (
+            <div className="w-9 shrink-0" />
+          )}
         </div>
       </div>
 
@@ -346,28 +352,29 @@ function ScoreTable({
   const navigate = useNavigate()
   const colWidth = players.length <= 2 ? 'flex-1' : players.length === 3 ? 'w-1/3' : 'w-1/4'
 
-  const playerIdByName = (name: string) =>
-    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
+  const playerDataByName = (name: string) =>
+    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())
 
   return (
     <div className="bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden">
       <div className="flex border-b border-[#2d3748] bg-[#0f3460]">
         <div className="w-10 shrink-0" />
         {players.map((player) => {
-          const playerId = playerIdByName(player)
+          const playerData = playerDataByName(player)
+          const playerId = playerData?.id
           return (
-            <div key={player} className={`${colWidth} py-3 px-1 text-center`}>
-              {playerId ? (
-                <button
-                  type="button"
-                  onClick={() => navigate({ to: '/player/$playerId', params: { playerId } })}
-                  className="text-white text-xs font-semibold truncate w-full hover:text-[#e94560] transition-colors cursor-pointer"
-                >
-                  {player}
-                </button>
-              ) : (
-                <p className="text-white text-xs font-semibold truncate cursor-default">{player}</p>
-              )}
+            <div key={player} className={`${colWidth} py-2 px-1 flex flex-col items-center gap-1`}>
+              <PlayerAvatar
+                name={player}
+                avatarUrl={playerData?.avatar_url}
+                size={40}
+                onClick={
+                  playerId
+                    ? () => navigate({ to: '/player/$playerId', params: { playerId } })
+                    : undefined
+                }
+              />
+              <p className="text-white text-xs font-semibold truncate w-full text-center">{player}</p>
             </div>
           )
         })}
