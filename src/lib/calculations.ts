@@ -11,6 +11,33 @@ export interface PlayerRoundInput {
   okeyThrown?: boolean
   doubleFinish?: boolean
   okeyBurnType?: OkeyBurnType
+  fakeOkey?: boolean
+}
+
+const FAKE_OKEY_BASE = 10
+
+export function getFakeOkeyLoserMultiplier(okeyThrown: boolean, doubleFinish: boolean): number {
+  if (okeyThrown) return 20
+  if (doubleFinish) return 40
+  return FAKE_OKEY_BASE
+}
+
+export function getFakeOkeyWinnerScore(okeyThrown: boolean, doubleFinish: boolean): number {
+  if (okeyThrown && doubleFinish) return -2000
+  if (okeyThrown) return -1000
+  if (doubleFinish) return -2000
+  return -100
+}
+
+export function getFakeOkeyBurnPenalty(burnType: OkeyBurnType): number {
+  switch (burnType) {
+    case 'normal_win':
+      return 1000
+    case 'okey_thrown':
+      return 2000
+    case 'double_okey':
+      return 3000
+  }
 }
 
 export function getSpecialMultiplier(okeyThrown: boolean, doubleFinish: boolean): number {
@@ -62,8 +89,23 @@ export function calculatePlayerScore(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: GameSettings = DEFAULT_SETTINGS,
+  fakeOkey = false
 ): number {
+  if (fakeOkey) {
+    if (input.status === 'no_winner') {
+      return (input.rawPoints ?? 0) * FAKE_OKEY_BASE
+    }
+    if (input.status === 'winner') {
+      return getFakeOkeyWinnerScore(okeyThrown, doubleFinish)
+    }
+    if (input.status === 'okey_burned') {
+      return getFakeOkeyBurnPenalty(input.okeyBurnType ?? 'normal_win')
+    }
+    const fakeMultiplier = getFakeOkeyLoserMultiplier(okeyThrown, doubleFinish)
+    return (input.rawPoints ?? 0) * fakeMultiplier
+  }
+
   const baseMultiplier = settings.colorMultipliers[color]
   const bonus = settings.winnerBonus[color]
 
@@ -89,11 +131,12 @@ export function calculateAllScores(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: GameSettings = DEFAULT_SETTINGS,
+  fakeOkey = false
 ): Record<string, number> {
   const scores: Record<string, number> = {}
   for (const input of playerInputs) {
-    scores[input.playerName] = calculatePlayerScore(input, color, okeyThrown, doubleFinish, settings)
+    scores[input.playerName] = calculatePlayerScore(input, color, okeyThrown, doubleFinish, settings, fakeOkey)
   }
   return scores
 }
@@ -123,13 +166,21 @@ export function reverseNoWinnerRawPoints(
 export function detectOkeyBurnType(
   score: number,
   color: Color,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: GameSettings = DEFAULT_SETTINGS,
+  fakeOkey = false
 ): OkeyBurnType | null {
   const types: OkeyBurnType[] = ['normal_win', 'okey_thrown', 'double_okey']
   for (const type of types) {
-    if (score === getOkeyBurnPenalty(type, color, settings)) return type
+    const penalty = fakeOkey
+      ? getFakeOkeyBurnPenalty(type)
+      : getOkeyBurnPenalty(type, color, settings)
+    if (score === penalty) return type
   }
   return null
+}
+
+export function isFakeOkeyWinnerScore(score: number): boolean {
+  return score === -100 || score === -1000 || score === -2000
 }
 
 export interface InferredRoundState {
@@ -145,11 +196,13 @@ export function inferRoundInputFromScores(
     color: Color
     okey_thrown: boolean
     double_finish: boolean
+    fake_okey?: boolean
     scores: Record<string, number>
   },
   players: string[],
   settings: GameSettings = DEFAULT_SETTINGS
-): InferredRoundState {
+): InferredRoundState & { fakeOkey: boolean } {
+  const fakeOkey = round.fake_okey ?? players.some((p) => isFakeOkeyWinnerScore(round.scores[p] ?? 0))
   const winner = players.find((p) => (round.scores[p] ?? 0) < 0) ?? null
   const playerStatuses: Record<string, 'normal' | 'okey_burned' | 'winner'> = {}
   const okeyBurnTypes: Record<string, OkeyBurnType> = {}
@@ -167,9 +220,11 @@ export function inferRoundInputFromScores(
       for (const player of players) {
         playerStatuses[player] = 'normal'
         const score = round.scores[player] ?? 0
-        rawPoints[player] = String(reverseNoWinnerRawPoints(score, round.color, settings))
+        rawPoints[player] = fakeOkey
+          ? String(Math.round(score / FAKE_OKEY_BASE))
+          : String(reverseNoWinnerRawPoints(score, round.color, settings))
       }
-      return { noWinner: true, winner: null, playerStatuses, okeyBurnTypes, rawPoints }
+      return { noWinner: true, winner: null, playerStatuses, okeyBurnTypes, rawPoints, fakeOkey }
     }
   }
 
@@ -180,20 +235,20 @@ export function inferRoundInputFromScores(
     }
 
     const score = round.scores[player] ?? 0
-    const burnType = detectOkeyBurnType(score, round.color, settings)
+    const burnType = detectOkeyBurnType(score, round.color, settings, fakeOkey)
 
     if (burnType) {
       playerStatuses[player] = 'okey_burned'
       okeyBurnTypes[player] = burnType
     } else {
       playerStatuses[player] = 'normal'
-      rawPoints[player] = String(
-        reverseRawPoints(score, round.color, round.okey_thrown, round.double_finish, settings)
-      )
+      rawPoints[player] = fakeOkey
+        ? String(Math.round(score / getFakeOkeyLoserMultiplier(round.okey_thrown, round.double_finish)))
+        : String(reverseRawPoints(score, round.color, round.okey_thrown, round.double_finish, settings))
     }
   }
 
-  return { noWinner: false, winner, playerStatuses, okeyBurnTypes, rawPoints }
+  return { noWinner: false, winner, playerStatuses, okeyBurnTypes, rawPoints, fakeOkey }
 }
 
 export function calculateTotals(
@@ -230,9 +285,10 @@ export function previewRoundScore(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: GameSettings = DEFAULT_SETTINGS,
+  fakeOkey = false
 ): number {
-  return calculatePlayerScore(input, color, okeyThrown, doubleFinish, settings)
+  return calculatePlayerScore(input, color, okeyThrown, doubleFinish, settings, fakeOkey)
 }
 
 export function getWinnerBonus(

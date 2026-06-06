@@ -76,7 +76,8 @@ function GamePage() {
       input.color,
       input.okeyThrown,
       input.doubleFinish,
-      currentGame.settings
+      currentGame.settings,
+      input.fakeOkey ?? false
     )
   }
 
@@ -94,6 +95,7 @@ function GamePage() {
           color: input.color,
           okey_thrown: input.okeyThrown,
           double_finish: input.doubleFinish,
+          fake_okey: input.fakeOkey ?? false,
           scores,
         })
       } catch (err) {
@@ -117,6 +119,7 @@ function GamePage() {
         color: input.color,
         okey_thrown: input.okeyThrown,
         double_finish: input.doubleFinish,
+        fake_okey: input.fakeOkey ?? false,
         scores,
       })
     } catch (err) {
@@ -542,8 +545,10 @@ function GameSettingsModal({
   onSaved: () => void
 }) {
   const { loadGame } = useGameStore()
+  const isActive = game.status === 'active'
   const [note, setNote] = useState(game.settings.note ?? '')
   const [totalRounds, setTotalRounds] = useState(game.total_rounds)
+  const [playerNames, setPlayerNames] = useState<string[]>([...game.players])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -553,17 +558,40 @@ function GameSettingsModal({
       return
     }
 
+    const trimmedNames = playerNames.map((n, i) => n.trim() || game.players[i] || `Oyuncu ${i + 1}`)
+    if (trimmedNames.some((n) => !n)) {
+      setError('Tüm oyuncu isimleri dolu olmalı')
+      return
+    }
+
     setSaving(true)
     setError('')
 
     try {
       const updatedSettings = { ...game.settings, note: note.trim() || undefined }
+      const nameMap: Record<string, string> = {}
+      game.players.forEach((oldName, i) => {
+        if (oldName !== trimmedNames[i]) nameMap[oldName] = trimmedNames[i]
+      })
+
       const { data, error: updateError } = await updateGame(game.id, {
         total_rounds: totalRounds,
+        players: trimmedNames,
         settings: updatedSettings,
       })
 
       if (updateError) throw updateError
+
+      if (Object.keys(nameMap).length > 0) {
+        const { rounds: gameRounds } = await fetchGameWithRounds(game.id)
+        for (const round of gameRounds) {
+          const newScores: Record<string, number> = {}
+          for (const [key, value] of Object.entries(round.scores)) {
+            newScores[nameMap[key] ?? key] = value
+          }
+          await updateRound(round.id, { scores: newScores })
+        }
+      }
 
       if (data) {
         const { rounds: r } = await fetchGameWithRounds(game.id)
@@ -643,15 +671,35 @@ function GameSettingsModal({
             </div>
 
             <div>
-              <label className="text-[#718096] text-xs font-semibold uppercase tracking-wider mb-2 block">
+              <label className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2 block">
                 Oyuncu İsimleri
               </label>
-              <input
-                type="text"
-                value={game.players.join(', ')}
-                disabled
-                className="w-full bg-[#0f3460]/20 border border-[#2d3748] rounded-xl py-3 px-4 text-[#718096] text-sm cursor-not-allowed"
-              />
+              {isActive ? (
+                <div className="space-y-2">
+                  {playerNames.map((name, i) => (
+                    <input
+                      key={i}
+                      type="text"
+                      value={name}
+                      onChange={(e) => {
+                        const updated = [...playerNames]
+                        updated[i] = e.target.value
+                        setPlayerNames(updated)
+                      }}
+                      maxLength={30}
+                      placeholder={`Oyuncu ${i + 1}`}
+                      className="w-full bg-[#0f3460]/50 border border-[#2d3748] rounded-xl py-3 px-4 text-white placeholder-[#718096] focus:outline-none focus:border-[#e94560] text-sm"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={game.players.join(', ')}
+                  disabled
+                  className="w-full bg-[#0f3460]/20 border border-[#2d3748] rounded-xl py-3 px-4 text-[#718096] text-sm cursor-not-allowed"
+                />
+              )}
             </div>
 
             <div>

@@ -65,7 +65,7 @@ function SettingsPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full overflow-y-auto">
+      <div className="flex-1 px-4 py-6 pb-20 max-w-lg mx-auto w-full overflow-y-auto">
         {/* Color Multipliers */}
         <section className="mb-6">
           <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">

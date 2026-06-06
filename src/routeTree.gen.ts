@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TrackerRouteImport } from './routes/tracker'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PlayersRouteImport } from './routes/players'
@@ -20,6 +21,11 @@ import { Route as PlayerPlayerIdRouteImport } from './routes/player.$playerId'
 import { Route as GameGameIdRouteImport } from './routes/game.$gameId'
 import { Route as GameOverGameIdRouteImport } from './routes/game-over.$gameId'
 
+const TrackerRoute = TrackerRouteImport.update({
+  id: '/tracker',
+  path: '/tracker',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StatsRoute = StatsRouteImport.update({
   id: '/stats',
   path: '/stats',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/players': typeof PlayersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
+  '/tracker': typeof TrackerRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/players': typeof PlayersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
+  '/tracker': typeof TrackerRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/players': typeof PlayersRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
+  '/tracker': typeof TrackerRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/players'
     | '/settings'
     | '/stats'
+    | '/tracker'
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/player/$playerId'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/players'
     | '/settings'
     | '/stats'
+    | '/tracker'
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/player/$playerId'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/players'
     | '/settings'
     | '/stats'
+    | '/tracker'
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/player/$playerId'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   PlayersRoute: typeof PlayersRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
+  TrackerRoute: typeof TrackerRoute
   GameOverGameIdRoute: typeof GameOverGameIdRoute
   GameGameIdRoute: typeof GameGameIdRoute
   PlayerPlayerIdRoute: typeof PlayerPlayerIdRoute
@@ -162,6 +175,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tracker': {
+      id: '/tracker'
+      path: '/tracker'
+      fullPath: '/tracker'
+      preLoaderRoute: typeof TrackerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/stats': {
       id: '/stats'
       path: '/stats'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlayersRoute: PlayersRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
+  TrackerRoute: TrackerRoute,
   GameOverGameIdRoute: GameOverGameIdRoute,
   GameGameIdRoute: GameGameIdRoute,
   PlayerPlayerIdRoute: PlayerPlayerIdRoute,

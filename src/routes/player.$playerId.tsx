@@ -169,7 +169,7 @@ function PlayerProfilePage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+      <div className="flex-1 px-4 py-6 pb-20 max-w-lg mx-auto w-full">
         {/* Üst kısım */}
         <div className="flex flex-col items-center mb-6">
           <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={96} className="mb-3" />

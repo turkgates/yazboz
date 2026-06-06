@@ -48,7 +48,8 @@ export const useGameStore = create<GameStore>()(
           input.color,
           input.okeyThrown,
           input.doubleFinish,
-          state.currentGame.settings
+          state.currentGame.settings,
+          input.fakeOkey ?? false
         )
 
         const round: Round = {
@@ -58,6 +59,7 @@ export const useGameStore = create<GameStore>()(
           color: input.color,
           okey_thrown: input.okeyThrown,
           double_finish: input.doubleFinish,
+          fake_okey: input.fakeOkey ?? false,
           scores,
           created_at: new Date().toISOString(),
         }
@@ -74,7 +76,8 @@ export const useGameStore = create<GameStore>()(
           input.color,
           input.okeyThrown,
           input.doubleFinish,
-          state.currentGame.settings
+          state.currentGame.settings,
+          input.fakeOkey ?? false
         )
 
         set((s) => ({
@@ -85,6 +88,7 @@ export const useGameStore = create<GameStore>()(
                   color: input.color,
                   okey_thrown: input.okeyThrown,
                   double_finish: input.doubleFinish,
+                  fake_okey: input.fakeOkey ?? false,
                   scores,
                 }
               : r

@@ -60,6 +60,7 @@ export interface Round {
   color: Color
   okey_thrown: boolean
   double_finish: boolean
+  fake_okey?: boolean
   scores: Record<string, number>
   created_at: string
 }
@@ -70,6 +71,7 @@ export interface RoundInput {
   color: Color
   okeyThrown: boolean
   doubleFinish: boolean
+  fakeOkey?: boolean
   noWinner?: boolean
   playerResults: import('@/lib/calculations').PlayerRoundInput[]
 }

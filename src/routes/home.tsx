@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchActiveGames, fetchFinishedGames, signOut } from '@/lib/supabase'
 import type { Game } from '@/types'
-import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Users, Home } from 'lucide-react'
+import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Users } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 
 export const Route = createFileRoute('/home')({
@@ -66,7 +66,7 @@ function HomePage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full pb-24">
+      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full pb-20">
         <div className="grid grid-cols-2 gap-3 mb-6">
           <motion.button
             whileTap={{ scale: 0.97 }}
@@ -77,6 +77,13 @@ function HomePage() {
             Yeni Oyun Başlat
           </motion.button>
 
+          <Link to="/tracker" className="block">
+            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
+              <span className="text-2xl">🀄</span>
+              <span className="text-white text-sm font-semibold">Oyun Takip</span>
+            </button>
+          </Link>
+
           <Link to="/players" className="block">
             <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
               <Users size={22} className="text-[#e94560]" />
@@ -84,8 +91,8 @@ function HomePage() {
             </button>
           </Link>
 
-          <Link to="/stats" className="block">
-            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
+          <Link to="/stats" className="col-span-2 block">
+            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex items-center justify-center gap-2 transition-colors">
               <BarChart2 size={22} className="text-[#e94560]" />
               <span className="text-white text-sm font-semibold">İstatistikler</span>
             </button>
@@ -157,27 +164,6 @@ function HomePage() {
           </>
         )}
       </div>
-
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#16213e] border-t border-[#2d3748] safe-bottom z-40">
-        <div className="max-w-lg mx-auto flex items-center justify-around py-2">
-          <Link to="/home" className="flex flex-col items-center gap-1 px-4 py-2 text-[#e94560]">
-            <Home size={20} />
-            <span className="text-[10px] font-medium">Ana Sayfa</span>
-          </Link>
-          <Link to="/players" className="flex flex-col items-center gap-1 px-4 py-2 text-[#718096] hover:text-white transition-colors">
-            <Users size={20} />
-            <span className="text-[10px] font-medium">Oyuncularım</span>
-          </Link>
-          <Link to="/stats" className="flex flex-col items-center gap-1 px-4 py-2 text-[#718096] hover:text-white transition-colors">
-            <BarChart2 size={20} />
-            <span className="text-[10px] font-medium">İstatistikler</span>
-          </Link>
-          <Link to="/settings" className="flex flex-col items-center gap-1 px-4 py-2 text-[#718096] hover:text-white transition-colors">
-            <Settings size={20} />
-            <span className="text-[10px] font-medium">Ayarlar</span>
-          </Link>
-        </div>
-      </nav>
     </div>
   )
 }
@@ -185,9 +171,17 @@ function HomePage() {
 function GameCard({ game, isActive }: { game: Game; isActive?: boolean }) {
   const navigate = useNavigate()
 
+  const handleClick = () => {
+    if (isActive) {
+      navigate({ to: '/game/$gameId', params: { gameId: game.id } })
+    } else {
+      navigate({ to: '/game-over/$gameId', params: { gameId: game.id } })
+    }
+  }
+
   return (
     <button
-      onClick={() => navigate({ to: '/game/$gameId', params: { gameId: game.id } })}
+      onClick={handleClick}
       className="w-full bg-[#16213e] border border-[#2d3748] rounded-xl p-4 flex items-center justify-between text-left hover:border-[#e94560]/50 transition-colors"
     >
       <div className="flex-1 min-w-0">

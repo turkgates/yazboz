@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
+import confetti from 'canvas-confetti'
 import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
 import { getRanking } from '@/lib/calculations'
@@ -24,8 +25,16 @@ function GameOverPage() {
   const { currentGame, rounds, loadGame, startGame, clearGame } = useGameStore()
   const { settings } = useSettingsStore()
   const [loading, setLoading] = useState(!currentGame || currentGame.id !== gameId)
-  const [showConfetti, setShowConfetti] = useState(false)
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
+
+  useEffect(() => {
+    confetti({
+      particleCount: 150,
+      spread: 80,
+      origin: { y: 0 },
+      colors: ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'],
+    })
+  }, [])
 
   useEffect(() => {
     if (!currentGame || currentGame.id !== gameId) {
@@ -36,7 +45,6 @@ function GameOverPage() {
     } else {
       setLoading(false)
     }
-    setTimeout(() => setShowConfetti(true), 300)
 
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return
@@ -95,12 +103,10 @@ function GameOverPage() {
   ]
 
   return (
-    <div className="min-h-dvh bg-[#1a1a2e] flex flex-col items-center px-4 py-8 relative overflow-hidden">
-      {showConfetti && <ConfettiEffect />}
-
+    <div className="min-h-dvh bg-[#1a1a2e] flex flex-col items-center px-4 py-8 pb-24 relative overflow-hidden">
       <div className="w-full max-w-sm mb-4">
         <button
-          onClick={() => navigate({ to: '/game/$gameId', params: { gameId } })}
+          onClick={() => navigate({ to: '/home' })}
           className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] mb-4"
         >
           <ArrowLeft size={18} />
@@ -179,6 +185,12 @@ function GameOverPage() {
         className="w-full max-w-sm flex flex-col gap-3"
       >
         <button
+          onClick={() => navigate({ to: '/game/$gameId', params: { gameId } })}
+          className="w-full bg-[#0f3460] border border-[#2d3748] hover:border-[#e94560]/40 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors"
+        >
+          Yazbozu Gör →
+        </button>
+        <button
           onClick={handleReplay}
           className="w-full bg-[#e94560] hover:bg-[#c73652] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors"
         >
@@ -212,37 +224,5 @@ function PlayerNameLink({ name, playerId }: { name: string; playerId?: string })
     >
       {name}
     </button>
-  )
-}
-
-function ConfettiEffect() {
-  const colors = ['#e94560', '#f5a623', '#27ae60', '#3498db', '#9b59b6', '#f39c12']
-  const pieces = Array.from({ length: 40 })
-
-  return (
-    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-      {pieces.map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute w-2 h-2 rounded-sm"
-          style={{
-            backgroundColor: colors[i % colors.length],
-            left: `${Math.random() * 100}%`,
-            top: '-10px',
-          }}
-          animate={{
-            y: ['0vh', '110vh'],
-            x: [0, (Math.random() - 0.5) * 200],
-            rotate: [0, Math.random() * 720],
-            opacity: [1, 1, 0],
-          }}
-          transition={{
-            duration: 2 + Math.random() * 2,
-            delay: Math.random() * 1.5,
-            ease: 'easeIn',
-          }}
-        />
-      ))}
-    </div>
   )
 }

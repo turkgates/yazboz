@@ -1,7 +1,8 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { BottomNavBar } from '@/components/layout/BottomNavBar'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -10,6 +11,8 @@ export const Route = createRootRoute({
 function RootLayout() {
   const [_user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const hideBottomNav = pathname.startsWith('/game/') || pathname === '/auth' || pathname === '/'
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -35,5 +38,10 @@ function RootLayout() {
     )
   }
 
-  return <Outlet />
+  return (
+    <>
+      <Outlet />
+      {!hideBottomNav && <BottomNavBar />}
+    </>
+  )
 }

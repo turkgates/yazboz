@@ -75,7 +75,7 @@ function PlayersPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full">
+      <div className="flex-1 px-4 py-6 pb-20 max-w-lg mx-auto w-full">
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-3 border-[#e94560] border-t-transparent rounded-full animate-spin" />

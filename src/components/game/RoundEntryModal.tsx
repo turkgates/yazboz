@@ -5,6 +5,7 @@ import { COLOR_LABELS } from '@/types'
 import type { PlayerRoundInput } from '@/lib/calculations'
 import {
   deriveOkeyBurnType,
+  getFakeOkeyLoserMultiplier,
   getLoserMultiplier,
   inferRoundInputFromScores,
   previewRoundScore,
@@ -39,6 +40,7 @@ export function RoundEntryModal({
   const isEditing = !!editingRound
 
   const [color, setColor] = useState<Color | null>(editingRound?.color ?? null)
+  const [fakeOkey, setFakeOkey] = useState(editingRound?.fake_okey ?? false)
   const [okeyThrown, setOkeyThrown] = useState(editingRound?.okey_thrown ?? false)
   const [doubleFinish, setDoubleFinish] = useState(editingRound?.double_finish ?? false)
   const [noWinner, setNoWinner] = useState(false)
@@ -62,6 +64,7 @@ export function RoundEntryModal({
     if (!editingRound) return
     const inferred = inferRoundInputFromScores(editingRound, game.players, settings)
     setColor(editingRound.color)
+    setFakeOkey(inferred.fakeOkey)
     setOkeyThrown(editingRound.okey_thrown)
     setDoubleFinish(editingRound.double_finish)
     setNoWinner(inferred.noWinner)
@@ -71,9 +74,19 @@ export function RoundEntryModal({
 
   const winner = game.players.find((p) => playerStatuses[p] === 'winner') ?? null
 
-  const currentMultiplier = color
-    ? getLoserMultiplier(color, okeyThrown, doubleFinish, settings.colorMultipliers)
-    : null
+  const currentMultiplier = fakeOkey
+    ? getFakeOkeyLoserMultiplier(okeyThrown, doubleFinish)
+    : color
+      ? getLoserMultiplier(color, okeyThrown, doubleFinish, settings.colorMultipliers)
+      : null
+
+  const handleFakeOkeyToggle = (checked: boolean) => {
+    setFakeOkey(checked)
+    if (checked) {
+      setOkeyThrown(false)
+      if (!color) setColor('black')
+    }
+  }
 
   const handleNoWinnerToggle = (checked: boolean) => {
     setNoWinner(checked)
@@ -131,16 +144,18 @@ export function RoundEntryModal({
     }
   }
 
+  const effectiveColor = color ?? 'black'
+
   const getPreviewScore = (player: string): number | null => {
-    if (!color) return null
+    if (!fakeOkey && !color) return null
     if (!noWinner && !winner) return null
-    return previewRoundScore(buildPlayerInput(player), color, okeyThrown, doubleFinish, settings)
+    return previewRoundScore(buildPlayerInput(player), effectiveColor, okeyThrown, doubleFinish, settings, fakeOkey)
   }
 
-  const showPreview = color && (noWinner || winner)
+  const showPreview = (fakeOkey || color) && (noWinner || winner)
 
   const handleSave = () => {
-    if (!color) return
+    if (!fakeOkey && !color) return
 
     if (!noWinner && !winner) {
       setSaveError("Biten oyuncuyu veya 'Kimse Bitmedi'yi seçin")
@@ -150,7 +165,14 @@ export function RoundEntryModal({
     setSaveError('')
 
     const playerResults = game.players.map(buildPlayerInput)
-    onSave({ color, okeyThrown, doubleFinish, noWinner, playerResults })
+    onSave({
+      color: effectiveColor,
+      okeyThrown: fakeOkey ? false : okeyThrown,
+      doubleFinish,
+      fakeOkey,
+      noWinner,
+      playerResults,
+    })
   }
 
   return (
@@ -181,21 +203,35 @@ export function RoundEntryModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* BÖLÜM 1 - Renk seçimi */}
+          {/* BÖLÜM 1 - Renk seçimi + Sahte Okey */}
           <section>
-            <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-              Okey Rengi
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider">
+                Okey Rengi
+              </p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={fakeOkey}
+                  onChange={(e) => handleFakeOkeyToggle(e.target.checked)}
+                  className="accent-purple-500 w-4 h-4"
+                />
+                <span className="text-white text-sm">Sahte Okey</span>
+              </label>
+            </div>
             <div className="grid grid-cols-4 gap-2">
               {COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
+                  disabled={fakeOkey}
                   onClick={() => setColor(c)}
                   className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-all ${
-                    color === c
-                      ? 'border-[#e94560] bg-[#e94560]/10'
-                      : 'border-[#2d3748] bg-[#0f3460]/30'
+                    fakeOkey
+                      ? 'opacity-40 cursor-not-allowed border-[#2d3748] bg-[#0f3460]/20'
+                      : color === c
+                        ? 'border-[#e94560] bg-[#e94560]/10'
+                        : 'border-[#2d3748] bg-[#0f3460]/30'
                   }`}
                 >
                   <span className="text-2xl">{COLOR_EMOJI[c]}</span>
@@ -214,13 +250,13 @@ export function RoundEntryModal({
               <div className="flex gap-3 mb-2">
                 <label
                   className={`flex-1 flex items-center gap-2 bg-[#0f3460]/40 border border-[#2d3748] rounded-xl p-3 ${
-                    winner ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                    winner && !fakeOkey ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={okeyThrown}
-                    disabled={!winner}
+                    disabled={!winner || fakeOkey}
                     onChange={(e) => setOkeyThrown(e.target.checked)}
                     className="accent-[#e94560] w-4 h-4"
                   />
@@ -242,10 +278,19 @@ export function RoundEntryModal({
                 </label>
               </div>
               <p className="text-center text-[#a0aec0] text-sm">
-                Mevcut çarpan:{' '}
-                <span className="text-white font-bold">
-                  {color ? `×${currentMultiplier}` : 'Renk seçin'}
-                </span>
+                {fakeOkey ? (
+                  <>
+                    Sahte Okey:{' '}
+                    <span className="text-purple-400 font-bold">×{currentMultiplier}</span>
+                  </>
+                ) : (
+                  <>
+                    Mevcut çarpan:{' '}
+                    <span className="text-white font-bold">
+                      {color ? `×${currentMultiplier}` : 'Renk seçin'}
+                    </span>
+                  </>
+                )}
               </p>
             </section>
           )}
@@ -381,7 +426,7 @@ export function RoundEntryModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={!color}
+            disabled={!fakeOkey && !color}
             className="flex-[2] bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-colors"
           >
             Kaydet

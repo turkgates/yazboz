@@ -47,6 +47,7 @@ create table if not exists rounds (
   color text not null check (color in ('black', 'red', 'yellow', 'green')),
   okey_thrown boolean default false,
   double_finish boolean default false,
+  fake_okey boolean default false,
   scores jsonb not null,
   created_at timestamptz default now(),
   unique(game_id, round_number)
