@@ -49,7 +49,7 @@ export function PlayerFormModal({ player, onClose, onSaved }: PlayerFormModalPro
 
       let finalAvatarUrl = player?.avatar_url ?? null
       if (avatarFile) {
-        finalAvatarUrl = await uploadAvatar(user.id, avatarFile)
+        finalAvatarUrl = await uploadAvatar(avatarFile, user.id)
       } else if (!avatarUrl) {
         finalAvatarUrl = null
       }

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { supabase, fetchFinishedGames } from '@/lib/supabase'
 import type { Game } from '@/types'
 import { ArrowLeft, Trophy, Hash } from 'lucide-react'
-import { formatDistanceToNow } from '@/lib/dateUtils'
+import { formatGameDate } from '@/lib/dateUtils'
 
 export const Route = createFileRoute('/stats')({
   beforeLoad: async () => {
@@ -74,19 +74,23 @@ function StatsPage() {
             ) : (
               <div className="flex flex-col gap-2">
                 {games.map((game, i) => (
-                  <motion.div
+                  <motion.button
                     key={game.id}
+                    type="button"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4"
+                    onClick={() => navigate({ to: '/game/$gameId', params: { gameId: game.id } })}
+                    className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors w-full"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-white text-sm font-medium">{game.players.join(', ')}</p>
-                      <p className="text-[#718096] text-xs">{formatDistanceToNow(game.finished_at ?? game.created_at)}</p>
+                      <p className="text-[#718096] text-xs shrink-0 ml-2">
+                        {formatGameDate(game.finished_at ?? game.created_at)}
+                      </p>
                     </div>
                     <p className="text-[#718096] text-xs">{game.players.length} oyuncu • {game.total_rounds} el</p>
-                  </motion.div>
+                  </motion.button>
                 ))}
               </div>
             )}

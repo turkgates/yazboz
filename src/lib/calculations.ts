@@ -35,6 +35,12 @@ export function getLoserMultiplier(
   return colorMultipliers[color] * getSpecialMultiplier(okeyThrown, doubleFinish)
 }
 
+export function deriveOkeyBurnType(okeyThrown: boolean, doubleFinish: boolean): OkeyBurnType {
+  if (doubleFinish) return 'double_okey'
+  if (okeyThrown) return 'okey_thrown'
+  return 'normal_win'
+}
+
 export function getOkeyBurnPenalty(
   burnType: OkeyBurnType,
   color: Color,

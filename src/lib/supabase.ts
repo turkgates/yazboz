@@ -142,21 +142,34 @@ export async function deletePlayer(playerId: string) {
   return supabase.from('players').delete().eq('id', playerId)
 }
 
-export async function uploadAvatar(userId: string, file: File): Promise<string> {
+export async function uploadAvatar(file: File, userId: string): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
   const filePath = `${userId}/${Date.now()}.${ext}`
 
-  const { error } = await supabase.storage.from('avatars').upload(filePath, file, {
-    upsert: true,
-  })
+  const { data: buckets } = await supabase.storage.listBuckets()
+  const avatarBucket = buckets?.find((b) => b.name === 'avatars')
 
-  if (error) {
-    console.error('Avatar upload error:', error)
-    throw new Error('Fotoğraf yüklenemedi: ' + error.message)
+  if (!avatarBucket) {
+    await supabase.storage.createBucket('avatars', { public: true })
   }
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(filePath, file, { upsert: true })
+
+  if (uploadError) throw uploadError
 
   const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
   return data.publicUrl
+}
+
+export async function fetchPlayerIdByName(userId: string, playerName: string) {
+  return supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('name', playerName)
+    .maybeSingle<{ id: string }>()
 }
 
 export async function fetchPlayerById(playerId: string) {

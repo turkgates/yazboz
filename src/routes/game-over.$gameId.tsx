@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchGameWithRounds, createGame } from '@/lib/supabase'
+import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
 import { getRanking } from '@/lib/calculations'
-import { Home, RotateCcw } from 'lucide-react'
+import { Home, RotateCcw, ArrowLeft } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Game } from '@/types'
+import type { Game, SavedPlayer } from '@/types'
+import { formatGameDate } from '@/lib/dateUtils'
 
 export const Route = createFileRoute('/game-over/$gameId')({
   beforeLoad: async () => {
@@ -23,6 +24,7 @@ function GameOverPage() {
   const { settings } = useSettingsStore()
   const [loading, setLoading] = useState(!currentGame || currentGame.id !== gameId)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
 
   useEffect(() => {
     if (!currentGame || currentGame.id !== gameId) {
@@ -34,6 +36,12 @@ function GameOverPage() {
       setLoading(false)
     }
     setTimeout(() => setShowConfetti(true), 300)
+
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      const { data: players } = await fetchPlayers(data.user.id)
+      setSavedPlayers(players ?? [])
+    })
   }, [gameId])
 
   const handleReplay = async () => {
@@ -41,9 +49,9 @@ function GameOverPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const gameId = uuidv4()
+    const newGameId = uuidv4()
     const newGame: Game = {
-      id: gameId,
+      id: newGameId,
       user_id: user.id,
       game_type: 'cezali_okey',
       status: 'active',
@@ -56,8 +64,11 @@ function GameOverPage() {
 
     startGame(newGame)
     try { await createGame({ ...newGame, finished_at: null }) } catch {}
-    navigate({ to: '/game/$gameId', params: { gameId } })
+    navigate({ to: '/game/$gameId', params: { gameId: newGameId } })
   }
+
+  const playerIdByName = (name: string) =>
+    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
 
   if (loading || !currentGame) {
     return (
@@ -84,23 +95,32 @@ function GameOverPage() {
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col items-center px-4 py-8 relative overflow-hidden">
-      {/* Confetti */}
       {showConfetti && <ConfettiEffect />}
 
-      {/* Winner Announcement */}
+      <div className="w-full max-w-sm mb-4">
+        <button
+          onClick={() => navigate({ to: '/game/$gameId', params: { gameId } })}
+          className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] mb-4"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <p className="text-[#718096] text-xs text-center">{formatGameDate(currentGame.created_at)}</p>
+      </div>
+
       <motion.div
         initial={{ opacity: 0, scale: 0.5 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ type: 'spring', damping: 15, delay: 0.2 }}
-        className="text-center mb-8 mt-4"
+        className="text-center mb-8"
       >
         <div className="text-7xl mb-3">🏆</div>
-        <h1 className="text-3xl font-black text-white mb-1">{winner.name}</h1>
+        <h1 className="text-3xl font-black text-white mb-1">
+          <PlayerNameLink name={winner.name} playerId={playerIdByName(winner.name)} />
+        </h1>
         <p className="text-[#f5a623] font-semibold">kazandı!</p>
         <p className="text-[#718096] text-sm mt-1">Toplam: {winner.total} puan</p>
       </motion.div>
 
-      {/* Rankings */}
       <div className="w-full max-w-sm flex flex-col gap-3 mb-8">
         {ranking.map((item, i) => (
           <motion.div
@@ -113,7 +133,9 @@ function GameOverPage() {
             <div className="flex items-center gap-3">
               <span className="text-2xl">{medals[i]}</span>
               <div>
-                <p className="text-white font-semibold">{item.name}</p>
+                <p className="text-white font-semibold">
+                  <PlayerNameLink name={item.name} playerId={playerIdByName(item.name)} />
+                </p>
                 <p className="text-[#718096] text-xs">{item.rank}. sıra</p>
               </div>
             </div>
@@ -127,7 +149,6 @@ function GameOverPage() {
         ))}
       </div>
 
-      {/* Actions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -150,6 +171,24 @@ function GameOverPage() {
         </button>
       </motion.div>
     </div>
+  )
+}
+
+function PlayerNameLink({ name, playerId }: { name: string; playerId?: string }) {
+  const navigate = useNavigate()
+
+  if (!playerId) {
+    return <span>{name}</span>
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => navigate({ to: '/player/$playerId', params: { playerId } })}
+      className="hover:text-[#e94560] transition-colors cursor-pointer"
+    >
+      {name}
+    </button>
   )
 }
 

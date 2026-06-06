@@ -22,6 +22,7 @@ export interface GameSettings {
   colorMultipliers: ColorMultipliers
   winnerBonus: WinnerBonus
   defaultRounds: number
+  note?: string
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {

@@ -13,10 +13,10 @@ import {
 import type { SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, Settings, Plus, MoreVertical } from 'lucide-react'
-import type { RoundInput, Round } from '@/types'
+import type { Game, RoundInput, Round } from '@/types'
 import { calculateAllScores } from '@/lib/calculations'
 import { v4 as uuidv4 } from 'uuid'
-import { formatDate } from '@/lib/dateUtils'
+import { formatGameDate } from '@/lib/dateUtils'
 import { RoundEntryModal } from '@/components/game/RoundEntryModal'
 
 export const Route = createFileRoute('/game/$gameId')({
@@ -47,6 +47,7 @@ function GamePage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     loadGameData()
@@ -61,10 +62,7 @@ function GamePage() {
   }
 
   const loadGameData = async () => {
-    if (currentGame?.id === gameId) {
-      setLoading(false)
-      return
-    }
+    setLoading(true)
     const { game, rounds: r } = await fetchGameWithRounds(gameId)
     if (game) loadGame(game, r)
     setLoading(false)
@@ -194,6 +192,7 @@ function GamePage() {
     )
   }
 
+  const isFinished = currentGame.status === 'finished'
   const gameOver = isGameFinished()
   const currentRound = rounds.length + 1
   const totals: Record<string, number> = {}
@@ -211,15 +210,28 @@ function GamePage() {
           >
             <ArrowLeft size={18} />
           </button>
-          <div className="text-center">
-            <p className="text-white font-semibold text-sm">
-              {gameOver
-                ? 'Oyun Bitti!'
-                : `El ${Math.min(currentRound, currentGame.total_rounds)} / ${currentGame.total_rounds}`}
-            </p>
-            <p className="text-[#718096] text-xs">{formatDate(currentGame.created_at)}</p>
+          <div className="text-center flex-1 min-w-0 px-2">
+            {isFinished ? (
+              <span className="inline-block bg-[#f5a623]/20 text-[#f5a623] text-xs font-semibold px-2 py-0.5 rounded-full mb-1">
+                Tamamlanan Oyun
+              </span>
+            ) : (
+              <p className="text-white font-semibold text-sm">
+                {gameOver
+                  ? 'Oyun Bitti!'
+                  : `El ${Math.min(currentRound, currentGame.total_rounds)} / ${currentGame.total_rounds}`}
+              </p>
+            )}
+            {currentGame.settings.note && (
+              <p className="text-white text-xs font-medium truncate">{currentGame.settings.note}</p>
+            )}
+            <p className="text-[#718096] text-xs">{formatGameDate(currentGame.created_at)}</p>
           </div>
-          <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0]">
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-white transition-colors"
+          >
             <Settings size={18} />
           </button>
         </div>
@@ -233,6 +245,7 @@ function GamePage() {
           currentRound={currentRound}
           totalRounds={currentGame.total_rounds}
           savedPlayers={savedPlayers}
+          readOnly={isFinished}
           openMenuId={openMenuId}
           onMenuToggle={setOpenMenuId}
           onEdit={openEditModal}
@@ -243,7 +256,7 @@ function GamePage() {
         />
       </div>
 
-      {!gameOver && (
+      {!isFinished && !gameOver && (
         <div className="px-4 pb-6 pt-3 bg-[#1a1a2e] border-t border-[#2d3748] safe-bottom max-w-lg mx-auto w-full">
           <motion.button
             whileTap={{ scale: 0.97 }}
@@ -256,7 +269,7 @@ function GamePage() {
         </div>
       )}
 
-      {gameOver && (
+      {gameOver && !isFinished && (
         <div className="px-4 pb-6 pt-3 safe-bottom max-w-lg mx-auto w-full">
           <button
             onClick={() => navigate({ to: '/game-over/$gameId', params: { gameId } })}
@@ -268,7 +281,7 @@ function GamePage() {
       )}
 
       <AnimatePresence>
-        {showModal && (
+        {showModal && !isFinished && (
           <RoundEntryModal
             game={currentGame}
             roundNumber={currentRound}
@@ -278,6 +291,16 @@ function GamePage() {
               setShowModal(false)
               setEditingRound(null)
             }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSettings && (
+          <GameSettingsModal
+            game={currentGame}
+            onClose={() => setShowSettings(false)}
+            onSaved={loadGameData}
           />
         )}
       </AnimatePresence>
@@ -302,6 +325,7 @@ function ScoreTable({
   currentRound,
   totalRounds,
   savedPlayers,
+  readOnly,
   openMenuId,
   onMenuToggle,
   onEdit,
@@ -313,6 +337,7 @@ function ScoreTable({
   currentRound: number
   totalRounds: number
   savedPlayers: SavedPlayer[]
+  readOnly?: boolean
   openMenuId: string | null
   onMenuToggle: (id: string | null) => void
   onEdit: (round: Round) => void
@@ -346,7 +371,7 @@ function ScoreTable({
             </div>
           )
         })}
-        <div className="w-8 shrink-0" />
+        {readOnly ? <div className="w-2 shrink-0" /> : <div className="w-8 shrink-0" />}
       </div>
 
       {rounds.map((round, idx) => (
@@ -356,6 +381,7 @@ function ScoreTable({
           players={players}
           colWidth={colWidth}
           striped={idx % 2 !== 0}
+          readOnly={readOnly}
           menuOpen={openMenuId === round.id}
           onMenuToggle={() => onMenuToggle(openMenuId === round.id ? null : round.id)}
           onEdit={() => onEdit(round)}
@@ -385,7 +411,7 @@ function ScoreTable({
                 )}
               </div>
             ))}
-            <div className="w-8 shrink-0" />
+            {readOnly ? <div className="w-2 shrink-0" /> : <div className="w-8 shrink-0" />}
           </div>
         )
       })}
@@ -402,7 +428,7 @@ function ScoreTable({
             </div>
           )
         })}
-        <div className="w-8 shrink-0" />
+        {readOnly ? <div className="w-2 shrink-0" /> : <div className="w-8 shrink-0" />}
       </div>
     </div>
   )
@@ -413,6 +439,7 @@ function RoundRow({
   players,
   colWidth,
   striped,
+  readOnly,
   menuOpen,
   onMenuToggle,
   onEdit,
@@ -422,6 +449,7 @@ function RoundRow({
   players: string[]
   colWidth: string
   striped: boolean
+  readOnly?: boolean
   menuOpen: boolean
   onMenuToggle: () => void
   onEdit: () => void
@@ -430,6 +458,7 @@ function RoundRow({
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const startLongPress = () => {
+    if (readOnly) return
     longPressTimer.current = setTimeout(() => onMenuToggle(), 500)
   }
 
@@ -444,6 +473,7 @@ function RoundRow({
       onTouchEnd={cancelLongPress}
       onTouchMove={cancelLongPress}
       onContextMenu={(e) => {
+        if (readOnly) return
         e.preventDefault()
         onMenuToggle()
       }}
@@ -462,34 +492,196 @@ function RoundRow({
           </div>
         )
       })}
-      <div className="w-8 shrink-0 flex items-center justify-center relative">
-        <button
-          type="button"
-          onClick={onMenuToggle}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-[#718096] hover:text-white hover:bg-[#0f3460]"
-        >
-          <MoreVertical size={14} />
-        </button>
-        {menuOpen && (
-          <div className="absolute right-0 top-8 z-20 bg-[#0f3460] border border-[#2d3748] rounded-xl shadow-xl overflow-hidden min-w-[120px]">
+      {!readOnly && (
+        <div className="w-8 shrink-0 flex items-center justify-center relative">
+          <button
+            type="button"
+            onClick={onMenuToggle}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#718096] hover:text-white hover:bg-[#0f3460]"
+          >
+            <MoreVertical size={14} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-8 z-20 bg-[#0f3460] border border-[#2d3748] rounded-xl shadow-xl overflow-hidden min-w-[120px]">
+              <button
+                type="button"
+                onClick={onEdit}
+                className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-[#16213e]"
+              >
+                Düzenle
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-[#16213e]"
+              >
+                Sil
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GameSettingsModal({
+  game,
+  onClose,
+  onSaved,
+}: {
+  game: Game
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { loadGame } = useGameStore()
+  const [note, setNote] = useState(game.settings.note ?? '')
+  const [totalRounds, setTotalRounds] = useState(game.total_rounds)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSave = async () => {
+    if (totalRounds < 1) {
+      setError('El sayısı en az 1 olmalı')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+
+    try {
+      const updatedSettings = { ...game.settings, note: note.trim() || undefined }
+      const { data, error: updateError } = await updateGame(game.id, {
+        total_rounds: totalRounds,
+        settings: updatedSettings,
+      })
+
+      if (updateError) throw updateError
+
+      if (data) {
+        const { rounds: r } = await fetchGameWithRounds(game.id)
+        loadGame(data, r)
+      }
+
+      onSaved()
+      onClose()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Kayıt başarısız')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-lg bg-[#16213e] rounded-t-3xl border-t border-x border-[#2d3748] safe-bottom"
+      >
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-[#4a5568]" />
+        </div>
+
+        <div className="px-5 pb-5">
+          <h3 className="text-white font-bold text-lg mb-5">Oyun Ayarları</h3>
+
+          <div className="space-y-4 mb-5">
+            <div>
+              <label className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2 block">
+                Oyun Adı / Notu
+              </label>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Örn: Cuma gecesi okeyi"
+                maxLength={50}
+                className="w-full bg-[#0f3460]/50 border border-[#2d3748] rounded-xl py-3 px-4 text-white placeholder-[#718096] focus:outline-none focus:border-[#e94560] text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2 block">
+                El Sayısı
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={totalRounds}
+                onChange={(e) => setTotalRounds(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="w-full bg-[#0f3460]/50 border border-[#2d3748] rounded-xl py-3 px-4 text-white focus:outline-none focus:border-[#e94560] text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-[#718096] text-xs font-semibold uppercase tracking-wider mb-2 block">
+                Oyuncu Sayısı
+              </label>
+              <input
+                type="text"
+                value={game.players.length.toString()}
+                disabled
+                className="w-full bg-[#0f3460]/20 border border-[#2d3748] rounded-xl py-3 px-4 text-[#718096] text-sm cursor-not-allowed"
+              />
+            </div>
+
+            <div>
+              <label className="text-[#718096] text-xs font-semibold uppercase tracking-wider mb-2 block">
+                Oyuncu İsimleri
+              </label>
+              <input
+                type="text"
+                value={game.players.join(', ')}
+                disabled
+                className="w-full bg-[#0f3460]/20 border border-[#2d3748] rounded-xl py-3 px-4 text-[#718096] text-sm cursor-not-allowed"
+              />
+            </div>
+
+            <div>
+              <label className="text-[#718096] text-xs font-semibold uppercase tracking-wider mb-2 block">
+                Oyun Tipi
+              </label>
+              <input
+                type="text"
+                value="Cezalı Okey"
+                disabled
+                className="w-full bg-[#0f3460]/20 border border-[#2d3748] rounded-xl py-3 px-4 text-[#718096] text-sm cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+
+          <div className="flex gap-3">
             <button
               type="button"
-              onClick={onEdit}
-              className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-[#16213e]"
+              onClick={onClose}
+              className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl"
             >
-              Düzenle
+              İptal
             </button>
             <button
               type="button"
-              onClick={onDelete}
-              className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-[#16213e]"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-[2] bg-[#e94560] disabled:opacity-60 text-white font-bold py-3.5 rounded-xl"
             >
-              Sil
+              {saving ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import type { Color, Game, Round, RoundInput } from '@/types'
 import { COLOR_LABELS } from '@/types'
-import type { OkeyBurnType, PlayerRoundInput } from '@/lib/calculations'
+import type { PlayerRoundInput } from '@/lib/calculations'
 import {
+  deriveOkeyBurnType,
   getLoserMultiplier,
   inferRoundInputFromScores,
   previewRoundScore,
@@ -42,22 +43,18 @@ export function RoundEntryModal({
   const [doubleFinish, setDoubleFinish] = useState(editingRound?.double_finish ?? false)
   const [noWinner, setNoWinner] = useState(false)
   const [playerStatuses, setPlayerStatuses] = useState<Record<string, PlayerUIStatus>>({})
-  const [okeyBurnTypes, setOkeyBurnTypes] = useState<Record<string, OkeyBurnType>>({})
   const [rawPoints, setRawPoints] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     const initial: Record<string, PlayerUIStatus> = {}
     const initialRaw: Record<string, string> = {}
-    const initialBurn: Record<string, OkeyBurnType> = {}
     for (const p of game.players) {
       initial[p] = 'normal'
       initialRaw[p] = ''
-      initialBurn[p] = 'normal_win'
     }
     setPlayerStatuses(initial)
     setRawPoints(initialRaw)
-    setOkeyBurnTypes(initialBurn)
     setNoWinner(false)
   }, [game.players])
 
@@ -70,7 +67,6 @@ export function RoundEntryModal({
     setNoWinner(inferred.noWinner)
     setPlayerStatuses(inferred.playerStatuses)
     setRawPoints(inferred.rawPoints)
-    setOkeyBurnTypes(inferred.okeyBurnTypes)
   }, [editingRound, game.players, settings])
 
   const winner = game.players.find((p) => playerStatuses[p] === 'winner') ?? null
@@ -124,7 +120,7 @@ export function RoundEntryModal({
       return {
         playerName: player,
         status: 'okey_burned',
-        okeyBurnType: okeyBurnTypes[player] ?? 'normal_win',
+        okeyBurnType: deriveOkeyBurnType(okeyThrown, doubleFinish),
       }
     }
 
@@ -330,28 +326,7 @@ export function RoundEntryModal({
                     )}
 
                     {isBurned && (
-                      <div className="flex flex-col gap-1.5 mt-1">
-                        {(
-                          [
-                            ['normal_win', 'Normal bitişe yakma'],
-                            ['okey_thrown', 'Okey atılmasına yakma'],
-                            ['double_okey', 'Çiftten okey atılmasına yakma'],
-                          ] as const
-                        ).map(([type, label]) => (
-                          <label key={type} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`burn-${player}`}
-                              checked={(okeyBurnTypes[player] ?? 'normal_win') === type}
-                              onChange={() =>
-                                setOkeyBurnTypes((p) => ({ ...p, [player]: type }))
-                              }
-                              className="accent-orange-500"
-                            />
-                            <span className="text-[#a0aec0] text-xs">{label}</span>
-                          </label>
-                        ))}
-                      </div>
+                      <p className="text-orange-400 text-xs font-medium mt-1">Okeyi Yaktı</p>
                     )}
                   </div>
                 )

@@ -1,3 +1,10 @@
+/**
+ * Avatar bucket yoksa Supabase SQL Editor'da şunu çalıştırın:
+ *
+ * insert into storage.buckets (id, name, public)
+ * values ('avatars', 'avatars', true)
+ * on conflict (id) do nothing;
+ */
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
