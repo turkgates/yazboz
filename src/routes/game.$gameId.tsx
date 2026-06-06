@@ -4,11 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   supabase,
   fetchGameWithRounds,
+  fetchPlayers,
   insertRound,
   updateGame,
   updateRound,
   deleteRound,
 } from '@/lib/supabase'
+import type { SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, Settings, Plus, MoreVertical } from 'lucide-react'
 import type { RoundInput, Round } from '@/types'
@@ -44,10 +46,19 @@ function GamePage() {
   const [editingRound, setEditingRound] = useState<Round | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
 
   useEffect(() => {
     loadGameData()
+    loadSavedPlayers()
   }, [gameId])
+
+  const loadSavedPlayers = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data } = await fetchPlayers(user.id)
+    setSavedPlayers(data ?? [])
+  }
 
   const loadGameData = async () => {
     if (currentGame?.id === gameId) {
@@ -221,6 +232,7 @@ function GamePage() {
           totals={totals}
           currentRound={currentRound}
           totalRounds={currentGame.total_rounds}
+          savedPlayers={savedPlayers}
           openMenuId={openMenuId}
           onMenuToggle={setOpenMenuId}
           onEdit={openEditModal}
@@ -289,6 +301,7 @@ function ScoreTable({
   totals,
   currentRound,
   totalRounds,
+  savedPlayers,
   openMenuId,
   onMenuToggle,
   onEdit,
@@ -299,22 +312,40 @@ function ScoreTable({
   totals: Record<string, number>
   currentRound: number
   totalRounds: number
+  savedPlayers: SavedPlayer[]
   openMenuId: string | null
   onMenuToggle: (id: string | null) => void
   onEdit: (round: Round) => void
   onDelete: (id: string) => void
 }) {
+  const navigate = useNavigate()
   const colWidth = players.length <= 2 ? 'flex-1' : players.length === 3 ? 'w-1/3' : 'w-1/4'
+
+  const playerIdByName = (name: string) =>
+    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
 
   return (
     <div className="bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden">
       <div className="flex border-b border-[#2d3748] bg-[#0f3460]">
         <div className="w-10 shrink-0" />
-        {players.map((player) => (
-          <div key={player} className={`${colWidth} py-3 px-1 text-center`}>
-            <p className="text-white text-xs font-semibold truncate">{player}</p>
-          </div>
-        ))}
+        {players.map((player) => {
+          const playerId = playerIdByName(player)
+          return (
+            <div key={player} className={`${colWidth} py-3 px-1 text-center`}>
+              {playerId ? (
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: '/player/$playerId', params: { playerId } })}
+                  className="text-white text-xs font-semibold truncate w-full hover:text-[#e94560] transition-colors cursor-pointer"
+                >
+                  {player}
+                </button>
+              ) : (
+                <p className="text-white text-xs font-semibold truncate cursor-default">{player}</p>
+              )}
+            </div>
+          )
+        })}
         <div className="w-8 shrink-0" />
       </div>
 

@@ -142,20 +142,57 @@ export async function deletePlayer(playerId: string) {
   return supabase.from('players').delete().eq('id', playerId)
 }
 
-export async function uploadAvatar(userId: string, file: File): Promise<string | null> {
-  const ext = file.name.split('.').pop() || 'jpg'
-  const path = `${userId}/${Date.now()}.${ext}`
+export async function uploadAvatar(userId: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  const filePath = `${userId}/${Date.now()}.${ext}`
 
-  const { error } = await supabase.storage.from('avatars').upload(path, file, {
+  const { error } = await supabase.storage.from('avatars').upload(filePath, file, {
     upsert: true,
-    contentType: file.type,
   })
 
   if (error) {
     console.error('Avatar upload error:', error)
-    return null
+    throw new Error('Fotoğraf yüklenemedi: ' + error.message)
   }
 
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+  const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
   return data.publicUrl
+}
+
+export async function fetchPlayerById(playerId: string) {
+  return supabase
+    .from('players')
+    .select('*')
+    .eq('id', playerId)
+    .single<SavedPlayer>()
+}
+
+export async function fetchPlayerGamesWithRounds(userId: string, playerName: string) {
+  const { data: games, error: gamesError } = await supabase
+    .from('games')
+    .select('*')
+    .eq('user_id', userId)
+    .contains('players', [playerName])
+    .order('created_at', { ascending: false })
+    .returns<Game[]>()
+
+  if (gamesError || !games?.length) {
+    return { games: games ?? [], roundsByGame: {} as Record<string, Round[]>, error: gamesError }
+  }
+
+  const gameIds = games.map((g) => g.id)
+  const { data: rounds, error: roundsError } = await supabase
+    .from('rounds')
+    .select('*')
+    .in('game_id', gameIds)
+    .order('round_number')
+    .returns<Round[]>()
+
+  const roundsByGame: Record<string, Round[]> = {}
+  for (const round of rounds ?? []) {
+    if (!roundsByGame[round.game_id]) roundsByGame[round.game_id] = []
+    roundsByGame[round.game_id].push(round)
+  }
+
+  return { games, roundsByGame, error: roundsError }
 }

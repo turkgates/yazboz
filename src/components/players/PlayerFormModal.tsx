@@ -49,12 +49,9 @@ export function PlayerFormModal({ player, onClose, onSaved }: PlayerFormModalPro
 
       let finalAvatarUrl = player?.avatar_url ?? null
       if (avatarFile) {
-        const uploaded = await uploadAvatar(user.id, avatarFile)
-        if (uploaded) finalAvatarUrl = uploaded
+        finalAvatarUrl = await uploadAvatar(user.id, avatarFile)
       } else if (!avatarUrl) {
         finalAvatarUrl = null
-      } else if (player?.avatar_url) {
-        finalAvatarUrl = player.avatar_url
       }
 
       if (player) {
@@ -129,8 +126,7 @@ export function PlayerFormModal({ player, onClose, onSaved }: PlayerFormModalPro
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
-              capture="user"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               className="hidden"
               onChange={handleFileChange}
             />

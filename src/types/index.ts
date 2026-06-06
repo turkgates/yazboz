@@ -63,17 +63,14 @@ export interface Round {
   created_at: string
 }
 
+export type { PlayerRoundInput, PlayerStatus, OkeyBurnType } from '@/lib/calculations'
+
 export interface RoundInput {
   color: Color
   okeyThrown: boolean
   doubleFinish: boolean
-  playerResults: PlayerRoundResult[]
-}
-
-export interface PlayerRoundResult {
-  playerName: string
-  isWinner: boolean
-  rawPoints: number
+  noWinner?: boolean
+  playerResults: import('@/lib/calculations').PlayerRoundInput[]
 }
 
 export interface Profile {

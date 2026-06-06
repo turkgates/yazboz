@@ -97,8 +97,14 @@ function PlayersPage() {
                 transition={{ delay: i * 0.04 }}
                 className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 flex items-center gap-3"
               >
-                <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} />
-                <p className="text-white font-medium flex-1 truncate">{player.name}</p>
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: '/player/$playerId', params: { playerId: player.id } })}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
+                  <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} />
+                  <p className="text-white font-medium flex-1 truncate">{player.name}</p>
+                </button>
                 <button
                   onClick={() => { setEditingPlayer(player); setShowModal(true) }}
                   className="w-9 h-9 flex items-center justify-center rounded-lg bg-[#0f3460] text-[#a0aec0] hover:text-white"

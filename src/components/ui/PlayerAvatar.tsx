@@ -3,7 +3,7 @@ import { getAvatarColor, getInitials } from '@/lib/playerUtils'
 interface PlayerAvatarProps {
   name: string
   avatarUrl?: string | null
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   className?: string
 }
 
@@ -11,6 +11,7 @@ const sizes = {
   sm: 'w-8 h-8 text-xs',
   md: 'w-10 h-10 text-sm',
   lg: 'w-14 h-14 text-lg',
+  xl: 'w-24 h-24 text-3xl',
 }
 
 export function PlayerAvatar({ name, avatarUrl, size = 'md', className = '' }: PlayerAvatarProps) {
