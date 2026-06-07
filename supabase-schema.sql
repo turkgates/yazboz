@@ -5,6 +5,7 @@
 create table if not exists profiles (
   id uuid references auth.users primary key,
   username text,
+  winners_count integer default 1,
   created_at timestamptz default now()
 );
 

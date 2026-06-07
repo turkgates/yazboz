@@ -280,6 +280,25 @@ export function getRanking(totals: Record<string, number>): Array<{ name: string
     .map((item, index) => ({ ...item, rank: index + 1 }))
 }
 
+export function getGameWinners(
+  playerTotals: Record<string, number>,
+  winnersCount: number
+): string[] {
+  const sorted = Object.entries(playerTotals).sort(([, a], [, b]) => a - b)
+  return sorted.slice(0, winnersCount).map(([name]) => name)
+}
+
+export function getPlayerRank(
+  playerName: string,
+  playerTotals: Record<string, number>
+): number {
+  const sorted = Object.entries(playerTotals).sort(([, a], [, b]) => a - b)
+  const index = sorted.findIndex(
+    ([name]) => name.toLowerCase() === playerName.toLowerCase()
+  )
+  return index === -1 ? sorted.length : index + 1
+}
+
 export function previewRoundScore(
   input: PlayerRoundInput,
   color: Color,

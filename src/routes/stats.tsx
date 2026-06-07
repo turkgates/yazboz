@@ -1,11 +1,9 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchPlayers } from '@/lib/supabase'
+import { supabase, fetchPlayers, fetchProfile } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import {
-  ArrowLeft,
-  Trophy,
   Gamepad2,
   Layers,
   Zap,
@@ -18,6 +16,7 @@ import {
 import { formatGameDate } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { BackButton } from '@/components/layout/BackButton'
 import { computeGlobalStats, type GlobalStatsSummary } from '@/lib/statsUtils'
 
 export const Route = createFileRoute('/stats')({
@@ -37,6 +36,7 @@ function StatsPage() {
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
     loadStats()
@@ -45,8 +45,9 @@ function StatsPage() {
   const loadStats = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    setUserId(user.id)
 
-    const [gamesRes, playersRes] = await Promise.all([
+    const [gamesRes, playersRes, profileRes] = await Promise.all([
       supabase
         .from('games')
         .select('*')
@@ -55,9 +56,12 @@ function StatsPage() {
         .order('created_at', { ascending: false })
         .returns<Game[]>(),
       fetchPlayers(user.id),
+      fetchProfile(user.id),
     ])
 
     const finishedGames = gamesRes.data ?? []
+    const winnersCount = profileRes.data?.winners_count ?? 1
+
     setGames(finishedGames)
     setSavedPlayers(playersRes.data ?? [])
 
@@ -68,7 +72,7 @@ function StatsPage() {
         .in('game_id', finishedGames.map((g) => g.id))
         .returns<Round[]>()
 
-      setGlobalStats(computeGlobalStats(finishedGames, rounds ?? []))
+      setGlobalStats(computeGlobalStats(finishedGames, rounds ?? [], winnersCount))
     } else {
       setGlobalStats(null)
     }
@@ -79,18 +83,34 @@ function StatsPage() {
   const playerByName = (name: string) =>
     savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())
 
+  const navigateToPlayer = async (playerName: string) => {
+    if (!userId) return
+
+    const saved = playerByName(playerName)
+    if (saved) {
+      navigate({ to: '/player/$playerId', params: { playerId: saved.id } })
+      return
+    }
+
+    const { data: playerRecord } = await supabase
+      .from('players')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', playerName)
+      .maybeSingle<{ id: string }>()
+
+    if (playerRecord) {
+      navigate({ to: '/player/$playerId', params: { playerId: playerRecord.id } })
+    }
+  }
+
   const records = globalStats?.records
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center gap-3 py-4 max-w-lg mx-auto">
-          <button
-            onClick={() => navigate({ to: '/home' })}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0]"
-          >
-            <ArrowLeft size={18} />
-          </button>
+          <BackButton className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460]" />
           <h1 className="text-lg font-bold text-white">İstatistikler</h1>
         </div>
       </div>
@@ -108,73 +128,51 @@ function StatsPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Bölüm 1 - Genel Özet */}
             <section>
               <SectionTitle>Genel Özet</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
-                <SummaryCard
-                  icon={<Gamepad2 size={20} />}
-                  label="Toplam Oyun"
-                  value={String(globalStats?.totalGames ?? 0)}
-                />
-                <SummaryCard
-                  icon={<Layers size={20} />}
-                  label="Toplam El"
-                  value={String(globalStats?.totalRounds ?? 0)}
-                />
-                <SummaryCard
-                  icon={<Zap size={20} />}
-                  label="Toplam Okey"
-                  value={String(globalStats?.totalOkeyThrows ?? 0)}
-                  color="gold"
-                />
-                <SummaryCard
-                  icon={<Flame size={20} />}
-                  label="Toplam Yakma"
-                  value={String(globalStats?.totalOkeyBurns ?? 0)}
-                  color="red"
-                />
+                <SummaryCard icon={<Gamepad2 size={20} />} label="Toplam Oyun" value={String(globalStats?.totalGames ?? 0)} />
+                <SummaryCard icon={<Layers size={20} />} label="Toplam El" value={String(globalStats?.totalRounds ?? 0)} />
+                <SummaryCard icon={<Zap size={20} />} label="Toplam Okey" value={String(globalStats?.totalOkeyThrows ?? 0)} color="gold" />
+                <SummaryCard icon={<Flame size={20} />} label="Toplam Yakma" value={String(globalStats?.totalOkeyBurns ?? 0)} color="red" />
               </div>
             </section>
 
-            {/* Bölüm 2 - En İyi Oyuncular */}
             {globalStats && globalStats.playerStats.length > 0 && (
               <section>
                 <SectionTitle>En İyi Oyuncular</SectionTitle>
                 <div className="flex flex-col gap-2">
-                  {globalStats.playerStats.map((player, i) => {
-                    const saved = playerByName(player.name)
-                    return (
-                      <motion.div
-                        key={player.name}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3"
-                      >
-                        <span className="text-lg w-6 shrink-0">
-                          {i < 3 ? MEDALS[i] : `${i + 1}.`}
-                        </span>
-                        <PlayerAvatar
-                          name={player.name}
-                          avatarUrl={saved?.avatar_url}
-                          size={36}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-semibold truncate">{player.name}</p>
-                          <p className="text-[#718096] text-xs">
-                            {player.wins} kazanma (%{player.winPercentage})
-                          </p>
-                        </div>
-                        <Trophy size={16} className="text-[#f5a623] shrink-0" />
-                      </motion.div>
-                    )
-                  })}
+                  {globalStats.playerStats.map((player, i) => (
+                    <motion.button
+                      key={player.name}
+                      type="button"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      onClick={() => navigateToPlayer(player.name)}
+                      className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3 text-left hover:border-[#e94560]/40 transition-colors w-full"
+                    >
+                      <span className="text-lg w-6 shrink-0">
+                        {i < 3 ? MEDALS[i] : `${i + 1}.`}
+                      </span>
+                      <PlayerAvatar
+                        name={player.name}
+                        avatarUrl={playerByName(player.name)?.avatar_url}
+                        size={40}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">{player.name}</p>
+                        <p className="text-[#718096] text-xs">
+                          {player.wins} kazanma (%{player.winPercentage}) • 🥇{player.firstPlaceCount} 🥈{player.secondPlaceCount} • {player.okeyThrows} okey
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="text-[#718096] shrink-0" />
+                    </motion.button>
+                  ))}
                 </div>
               </section>
             )}
 
-            {/* Bölüm 3 - Rekorlar */}
             {records && (
               <section>
                 <SectionTitle>Rekorlar</SectionTitle>
@@ -228,47 +226,37 @@ function StatsPage() {
               </section>
             )}
 
-            {/* Bölüm 4 - Oyuncu Karşılaştırma */}
             {globalStats && globalStats.playerStats.length > 0 && (
               <section>
                 <SectionTitle>Oyuncu Karşılaştırma</SectionTitle>
                 <div className="flex flex-col gap-2">
-                  {globalStats.playerStats.map((player) => {
-                    const saved = playerByName(player.name)
-                    return (
-                      <button
-                        key={player.name}
-                        type="button"
-                        onClick={() => {
-                          if (saved) {
-                            navigate({ to: '/player/$playerId', params: { playerId: saved.id } })
-                          }
-                        }}
-                        disabled={!saved}
-                        className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 flex items-center gap-3 text-left hover:border-[#e94560]/40 transition-colors disabled:opacity-60 w-full"
-                      >
-                        <PlayerAvatar
-                          name={player.name}
-                          avatarUrl={saved?.avatar_url}
-                          size={40}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-semibold truncate">{player.name}</p>
-                          <p className="text-[#718096] text-xs">
-                            {player.wins} kazanma • Ort.{' '}
-                            {player.averageGameScore > 0 ? '+' : ''}
-                            {player.averageGameScore} puan • {player.okeyThrows} okey
-                          </p>
-                        </div>
-                        {saved && <ChevronRight size={16} className="text-[#718096] shrink-0" />}
-                      </button>
-                    )
-                  })}
+                  {globalStats.playerStats.map((player) => (
+                    <button
+                      key={player.name}
+                      type="button"
+                      onClick={() => navigateToPlayer(player.name)}
+                      className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 flex items-center gap-3 text-left hover:border-[#e94560]/40 transition-colors w-full"
+                    >
+                      <PlayerAvatar
+                        name={player.name}
+                        avatarUrl={playerByName(player.name)?.avatar_url}
+                        size={40}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">{player.name}</p>
+                        <p className="text-[#718096] text-xs">
+                          {player.wins} kazanma • 🥇{player.firstPlaceCount} 🥈{player.secondPlaceCount} • Ort.{' '}
+                          {player.averageGameScore > 0 ? '+' : ''}
+                          {player.averageGameScore} puan • {player.okeyThrows} okey
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="text-[#718096] shrink-0" />
+                    </button>
+                  ))}
                 </div>
               </section>
             )}
 
-            {/* Bölüm 5 - Son Oyunlar */}
             <section>
               <SectionTitle>Son Oyunlar</SectionTitle>
               <div className="flex flex-col gap-2">

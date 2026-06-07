@@ -12,7 +12,8 @@ import {
 } from '@/lib/supabase'
 import type { SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
-import { ArrowLeft, Settings, Plus, MoreVertical } from 'lucide-react'
+import { Settings, Plus, MoreVertical } from 'lucide-react'
+import { BackButton } from '@/components/layout/BackButton'
 import type { Game, RoundInput, Round } from '@/types'
 import { calculateAllScores } from '@/lib/calculations'
 import { v4 as uuidv4 } from 'uuid'
@@ -217,13 +218,7 @@ function GamePage() {
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top shrink-0">
         <div className="flex items-center justify-between py-3 max-w-lg mx-auto">
-          <button
-            onClick={() => navigate({ to: isFinished ? '/stats' : '/home' })}
-            className="flex items-center gap-1.5 text-[#a0aec0] hover:text-white transition-colors shrink-0"
-          >
-            <ArrowLeft size={18} />
-            {isFinished && <span className="text-sm font-medium">Geri</span>}
-          </button>
+          <BackButton showLabel={isFinished} className="shrink-0" />
           <div className="text-center flex-1 min-w-0 px-2">
             {isFinished ? (
               <span className="inline-block bg-[#f5a623]/25 text-[#f5a623] text-xs font-bold px-3 py-1 rounded-full mb-1 border border-[#f5a623]/40">

@@ -2,6 +2,7 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { OkeyTile, type OkeyTileColor } from '@/components/OkeyTile'
+import { BackButton } from '@/components/layout/BackButton'
 
 export const Route = createFileRoute('/tracker')({
   beforeLoad: async () => {
@@ -29,10 +30,10 @@ const COLORS: {
   icon: string
   label: string
 }[] = [
-  { key: 'black', tileColor: 'black', icon: '⬛', label: 'Siyahlar' },
-  { key: 'red', tileColor: 'red', icon: '🔴', label: 'Kırmızılar' },
-  { key: 'yellow', tileColor: 'yellow', icon: '🟡', label: 'Sarılar' },
-  { key: 'green', tileColor: 'blue', icon: '🔵', label: 'Maviler' },
+  { key: 'black', tileColor: 'black', icon: '⬛', label: 'Siyah' },
+  { key: 'red', tileColor: 'red', icon: '🔴', label: 'Kırmızı' },
+  { key: 'yellow', tileColor: 'yellow', icon: '🟡', label: 'Sarı' },
+  { key: 'green', tileColor: 'blue', icon: '🔵', label: 'Mavi' },
 ]
 
 function createInitialData(): TrackerData {
@@ -134,10 +135,13 @@ function TrackerPage() {
   }
 
   return (
-    <div className="tracker-page min-h-dvh bg-[#1a1a2e] flex flex-col pb-20 overflow-x-hidden w-full max-w-full">
+    <div className="tracker-page tracker-container min-h-dvh bg-[#1a1a2e] flex flex-col pb-20 overflow-x-hidden w-full max-w-full">
       <div className="tracker-header bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center justify-between py-4 max-w-full mx-auto">
-          <h1 className="text-lg font-bold text-white">Taş Takip</h1>
+          <div className="flex items-center gap-3">
+            <BackButton className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460]" />
+            <h1 className="text-lg font-bold text-white">Taş Takip</h1>
+          </div>
           <button
             type="button"
             onClick={handleReset}
@@ -148,14 +152,14 @@ function TrackerPage() {
         </div>
       </div>
 
-      <div className="tracker-content flex-1 px-4 py-4 max-w-full mx-auto w-full overflow-y-auto overflow-x-hidden">
+      <div className="tracker-content flex-1 py-4 max-w-full mx-auto w-full overflow-y-auto overflow-x-hidden">
         {COLORS.map(({ key, tileColor, icon, label }) => (
           <section key={key} className="tracker-section">
             <h2 className="tracker-section-title">
               <span className="tracker-section-icon">{icon}</span>
               {label}
             </h2>
-            <div className="tile-grid">
+            <div className="tile-row tile-grid">
               {Array.from({ length: 13 }, (_, num) => (
                 <OkeyTile
                   key={num}

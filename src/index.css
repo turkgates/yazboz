@@ -80,7 +80,8 @@ input[type="number"] {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.tracker-page {
+.tracker-page,
+.tracker-container {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
@@ -93,6 +94,16 @@ input[type="number"] {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.tile-row {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow-x: hidden;
 }
 
 .tracker-section {
@@ -132,14 +143,11 @@ input[type="number"] {
 /* ── Okey Tile ── */
 .okey-tile {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
+  display: block;
   flex-shrink: 0;
   width: 42px;
   height: 56px;
-  padding: 6px 4px 4px;
+  padding: 0;
   border: 1px solid #c4b483;
   border-radius: 6px;
   background: linear-gradient(145deg, #f5f0dc, #e8dfb8);
@@ -156,7 +164,42 @@ input[type="number"] {
 .okey-tile--small {
   width: 32px;
   height: 44px;
-  padding: 4px 2px 3px;
+}
+
+.tile-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 6px;
+  height: 100%;
+  width: 100%;
+  position: relative;
+}
+
+.okey-tile--small .tile-inner {
+  padding-top: 4px;
+}
+
+.tile-number,
+.okey-tile-number {
+  line-height: 1;
+  margin-top: 0;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 18px;
+  font-weight: 700;
+  z-index: 1;
+}
+
+.okey-tile--small .tile-number,
+.okey-tile--small .okey-tile-number {
+  font-size: 13px;
+}
+
+.tile-dot,
+.okey-tile-dot {
+  margin-top: auto;
+  margin-bottom: 4px;
 }
 
 .okey-tile--fake {
@@ -197,31 +240,19 @@ input[type="number"] {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-.okey-tile-number {
-  margin-top: 4px;
-  font-family: Georgia, 'Times New Roman', Times, serif;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1;
-  z-index: 1;
-}
-
-.okey-tile--small .okey-tile-number {
-  font-size: 13px;
-  margin-top: 2px;
-}
-
+.okey-tile--black .tile-number,
 .okey-tile--black .okey-tile-number { color: #1a1a1a; }
+.okey-tile--red .tile-number,
 .okey-tile--red .okey-tile-number { color: #cc0000; }
+.okey-tile--yellow .tile-number,
 .okey-tile--yellow .okey-tile-number { color: #cc8800; }
+.okey-tile--blue .tile-number,
 .okey-tile--blue .okey-tile-number { color: #0044cc; }
 
 .okey-tile-dot {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  margin-top: auto;
-  margin-bottom: 2px;
   z-index: 1;
 }
 
@@ -362,7 +393,8 @@ input[type="number"] {
 
 /* Landscape */
 @media (orientation: landscape) {
-  .tracker-page {
+  .tracker-container {
+    width: 100%;
     padding-left: 4px;
     padding-right: 4px;
   }
@@ -403,6 +435,7 @@ input[type="number"] {
     transform: rotate(180deg);
   }
 
+  .tile-row,
   .tile-grid {
     flex-wrap: nowrap !important;
     flex: 1;
@@ -410,10 +443,16 @@ input[type="number"] {
     width: 100% !important;
   }
 
-  .tile-grid .okey-tile:not(.okey-tile--fake) {
-    flex: 1 1 0;
-    min-width: 0;
-    width: auto;
-    max-width: 32px;
+  .okey-tile:not(.okey-tile--fake) {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 44px !important;
+  }
+
+  .okey-tile--fake {
+    flex: 0 0 auto !important;
+    width: 64px !important;
+    height: 44px !important;
   }
 }

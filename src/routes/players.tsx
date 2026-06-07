@@ -10,7 +10,8 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { supabase, fetchPlayers, deletePlayer } from '@/lib/supabase'
 import type { SavedPlayer } from '@/types'
-import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { BackButton } from '@/components/layout/BackButton'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerFormModal } from '@/components/players/PlayerFormModal'
 
@@ -57,12 +58,7 @@ function PlayersPage() {
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center justify-between py-4 max-w-lg mx-auto">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate({ to: '/home' })}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0]"
-            >
-              <ArrowLeft size={18} />
-            </button>
+            <BackButton className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460]" />
             <h1 className="text-lg font-bold text-white">Oyuncularım</h1>
           </div>
           <button

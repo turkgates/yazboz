@@ -1,17 +1,16 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase, fetchPlayerById, fetchPlayerGamesWithRounds } from '@/lib/supabase'
+import { supabase, fetchPlayerById, fetchPlayerGamesWithRounds, fetchProfile } from '@/lib/supabase'
 import type { Game, SavedPlayer } from '@/types'
+import { getGameWinners, getPlayerRank } from '@/lib/calculations'
 import {
-  ArrowLeft,
   Pencil,
   Trophy,
   TrendingUp,
   Flame,
   Zap,
   Gamepad2,
-  Percent,
   BarChart3,
   Layers,
   Star,
@@ -20,13 +19,16 @@ import {
 } from 'lucide-react'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerFormModal } from '@/components/players/PlayerFormModal'
+import { BackButton } from '@/components/layout/BackButton'
+import { GameResultModal } from '@/components/GameResultModal'
 import {
   computePlayerProfileStats,
-  getGameWinners,
+  computeGameTotals,
   getPlayerGameTotal,
+  getRankEmoji,
   type PlayerProfileStats,
 } from '@/lib/statsUtils'
-import { formatDate } from '@/lib/dateUtils'
+import { formatGameDate } from '@/lib/dateUtils'
 
 export const Route = createFileRoute('/player/$playerId')({
   beforeLoad: async () => {
@@ -39,6 +41,7 @@ export const Route = createFileRoute('/player/$playerId')({
 interface GameHistoryItem {
   game: Game
   total: number
+  rank: number
   isWinner: boolean
 }
 
@@ -55,6 +58,7 @@ function PlayerProfilePage() {
   const [history, setHistory] = useState<GameHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -73,15 +77,21 @@ function PlayerProfilePage() {
 
     setPlayer(playerData)
 
+    const { data: profile } = await fetchProfile(user.id)
+    const winnersCount = profile?.winners_count ?? 1
+
     const { games, roundsByGame } = await fetchPlayerGamesWithRounds(user.id, playerData.name)
-    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame))
+    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame, winnersCount))
 
     const items: GameHistoryItem[] = games.slice(0, 10).map((game) => {
       const rounds = roundsByGame[game.id] ?? []
-      const winners = getGameWinners(game, rounds)
+      const playerTotals = computeGameTotals(game, rounds)
+      const winners = getGameWinners(playerTotals, winnersCount)
+      const rank = getPlayerRank(playerData.name, playerTotals)
       return {
         game,
         total: getPlayerGameTotal(rounds, playerData.name),
+        rank,
         isWinner: winners.some((w) => w.toLowerCase() === playerData.name.toLowerCase()),
       }
     })
@@ -116,12 +126,7 @@ function PlayerProfilePage() {
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center gap-3 py-4 max-w-lg mx-auto">
-          <button
-            onClick={() => navigate({ to: '/players' })}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0]"
-          >
-            <ArrowLeft size={18} />
-          </button>
+          <BackButton className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460]" />
           <h1 className="text-lg font-bold text-white flex-1 truncate">Oyuncu Profili</h1>
         </div>
       </div>
@@ -141,8 +146,15 @@ function PlayerProfilePage() {
 
         <div className="grid grid-cols-2 gap-3 mb-6">
           <StatCard icon={<Gamepad2 size={18} />} label="Toplam Oyun" value={String(stats.totalGames)} />
-          <StatCard icon={<Trophy size={18} />} label="Kazanma" value={String(stats.wins)} color="gold" />
-          <StatCard icon={<Percent size={18} />} label="Kazanma %" value={`%${stats.winPercentage}`} color="gold" />
+          <StatCard
+            icon={<Trophy size={18} />}
+            label="Kazanma"
+            value={`${stats.wins} (%${stats.winPercentage})`}
+            color="gold"
+          />
+          <StatCard icon={<span className="text-base">🥇</span>} label="Birincilik" value={String(stats.firstPlaceCount)} color="gold" />
+          <StatCard icon={<span className="text-base">🥈</span>} label="İkincilik" value={String(stats.secondPlaceCount)} />
+          <StatCard icon={<span className="text-base">🥉</span>} label="Üçüncülük" value={String(stats.thirdPlaceCount)} />
           <StatCard
             icon={<BarChart3 size={18} />}
             label="Ort. Oyun Puanı"
@@ -194,23 +206,24 @@ function PlayerProfilePage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
-                onClick={() =>
-                  navigate({ to: '/game/$gameId', params: { gameId: item.game.id } })
-                }
+                onClick={() => setSelectedGameId(item.game.id)}
                 className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors w-full"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                      item.isWinner
-                        ? 'bg-[#f5a623]/20 text-[#f5a623]'
-                        : 'bg-[#2d3748] text-[#718096]'
-                    }`}
-                  >
-                    {item.isWinner ? '🏆 Kazandı' : 'Kaybetti'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        item.isWinner
+                          ? 'bg-[#f5a623]/20 text-[#f5a623]'
+                          : 'bg-[#2d3748] text-[#718096]'
+                      }`}
+                    >
+                      {item.isWinner ? '🏆 Kazandı' : 'Kaybetti'}
+                    </span>
+                    <span className="text-sm">{getRankEmoji(item.rank)}</span>
+                  </div>
                   <p className="text-[#718096] text-xs">
-                    {formatDate(item.game.finished_at ?? item.game.created_at)}
+                    {formatGameDate(item.game.finished_at ?? item.game.created_at)}
                   </p>
                 </div>
                 <p
@@ -225,6 +238,16 @@ function PlayerProfilePage() {
           </div>
         )}
       </div>
+
+      <GameResultModal
+        gameId={selectedGameId ?? ''}
+        isOpen={!!selectedGameId}
+        onClose={() => setSelectedGameId(null)}
+        onViewScoreboard={(gameId) => {
+          setSelectedGameId(null)
+          navigate({ to: '/game/$gameId', params: { gameId } })
+        }}
+      />
 
       <AnimatePresence>
         {showEditModal && (

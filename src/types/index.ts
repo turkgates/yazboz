@@ -79,6 +79,7 @@ export interface RoundInput {
 export interface Profile {
   id: string
   username: string | null
+  winners_count?: number
   created_at: string
 }
 

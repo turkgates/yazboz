@@ -112,6 +112,18 @@ export async function fetchProfile(userId: string) {
     .single<Profile>()
 }
 
+export async function updateProfile(
+  userId: string,
+  updates: Partial<Pick<Profile, 'username' | 'winners_count'>>
+) {
+  return supabase
+    .from('profiles')
+    .update(updates as Record<string, unknown>)
+    .eq('id', userId)
+    .select()
+    .single<Profile>()
+}
+
 export async function fetchPlayers(userId: string) {
   return supabase
     .from('players')

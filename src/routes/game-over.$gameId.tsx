@@ -5,7 +5,8 @@ import confetti from 'canvas-confetti'
 import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
 import { getRanking } from '@/lib/calculations'
-import { Home, RotateCcw, ArrowLeft } from 'lucide-react'
+import { Home, RotateCcw } from 'lucide-react'
+import { BackButton } from '@/components/layout/BackButton'
 import { v4 as uuidv4 } from 'uuid'
 import type { Game, SavedPlayer } from '@/types'
 import { formatGameDate } from '@/lib/dateUtils'
@@ -105,12 +106,7 @@ function GameOverPage() {
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col items-center px-4 py-8 pb-24 relative overflow-hidden">
       <div className="w-full max-w-sm mb-4">
-        <button
-          onClick={() => navigate({ to: '/home' })}
-          className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] mb-4"
-        >
-          <ArrowLeft size={18} />
-        </button>
+        <BackButton className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] mb-4" />
         <p className="text-[#718096] text-xs text-center">{formatGameDate(currentGame.created_at)}</p>
       </div>
 

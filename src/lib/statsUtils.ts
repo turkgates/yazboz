@@ -1,5 +1,5 @@
 import type { Game, Round } from '@/types'
-import { detectOkeyBurnType, getLeader } from '@/lib/calculations'
+import { detectOkeyBurnType, getGameWinners, getLeader, getPlayerRank } from '@/lib/calculations'
 
 export function getScoreForPlayer(scores: Record<string, number>, playerName: string): number {
   if (playerName in scores) return scores[playerName] ?? 0
@@ -37,16 +37,6 @@ export function getRoundWinner(game: Game, round: Round): string | null {
   return getLeader(negatives)
 }
 
-export function getGameWinners(game: Game, rounds: Round[]): string[] {
-  const totals = computeGameTotals(game, rounds)
-  const values = Object.values(totals)
-  if (values.length === 0) return []
-  const minScore = Math.min(...values)
-  return Object.entries(totals)
-    .filter(([, score]) => score === minScore)
-    .map(([name]) => name)
-}
-
 export function isOkeyBurn(
   game: Game,
   round: Round,
@@ -66,6 +56,9 @@ export interface PlayerProfileStats {
   totalGames: number
   wins: number
   winPercentage: number
+  firstPlaceCount: number
+  secondPlaceCount: number
+  thirdPlaceCount: number
   averageGameScore: number
   totalRounds: number
   okeyCount: number
@@ -79,9 +72,13 @@ export interface PlayerProfileStats {
 export function computePlayerProfileStats(
   playerName: string,
   games: Game[],
-  roundsByGame: Record<string, Round[]>
+  roundsByGame: Record<string, Round[]>,
+  winnersCount: number
 ): PlayerProfileStats {
   let wins = 0
+  let firstPlaceCount = 0
+  let secondPlaceCount = 0
+  let thirdPlaceCount = 0
   let totalScore = 0
   let totalRounds = 0
   let okeyCount = 0
@@ -93,19 +90,20 @@ export function computePlayerProfileStats(
 
   for (const game of games) {
     const gameRounds = roundsByGame[game.id] ?? []
-    const gameTotal = gameRounds.reduce(
-      (sum, r) => sum + getScoreForPlayer(r.scores, playerName),
-      0
-    )
+    const playerTotals = computeGameTotals(game, gameRounds)
+    const gameTotal = playerTotals[playerName] ?? getPlayerGameTotal(gameRounds, playerName)
     totalScore += gameTotal
 
     if (bestGame === null || gameTotal < bestGame) bestGame = gameTotal
     if (worstGame === null || gameTotal > worstGame) worstGame = gameTotal
 
-    const gameWinners = getGameWinners(game, gameRounds)
-    if (gameWinners.some((w) => w.toLowerCase() === playerName.toLowerCase())) {
-      wins++
-    }
+    const winners = getGameWinners(playerTotals, winnersCount)
+    const rank = getPlayerRank(playerName, playerTotals)
+
+    if (winners.some((w) => w.toLowerCase() === playerName.toLowerCase())) wins++
+    if (rank === 1) firstPlaceCount++
+    if (rank === 2) secondPlaceCount++
+    if (rank === 3) thirdPlaceCount++
 
     for (const round of gameRounds) {
       const score = getScoreForPlayer(round.scores, playerName)
@@ -130,6 +128,9 @@ export function computePlayerProfileStats(
     totalGames,
     wins,
     winPercentage: totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0,
+    firstPlaceCount,
+    secondPlaceCount,
+    thirdPlaceCount,
     averageGameScore: totalGames > 0 ? Math.round(totalScore / totalGames) : 0,
     totalRounds,
     okeyCount,
@@ -146,6 +147,9 @@ export interface PlayerAggregateStats {
   wins: number
   winPercentage: number
   gamesPlayed: number
+  firstPlaceCount: number
+  secondPlaceCount: number
+  thirdPlaceCount: number
   totalScore: number
   averageGameScore: number
   okeyThrows: number
@@ -169,7 +173,11 @@ export interface GlobalStatsSummary {
   records: GlobalRecords
 }
 
-export function computeGlobalStats(games: Game[], rounds: Round[]): GlobalStatsSummary {
+export function computeGlobalStats(
+  games: Game[],
+  rounds: Round[],
+  winnersCount: number
+): GlobalStatsSummary {
   const roundsByGame = groupRoundsByGame(rounds)
   const playerMap = new Map<string, PlayerAggregateStats>()
 
@@ -189,6 +197,9 @@ export function computeGlobalStats(games: Game[], rounds: Round[]): GlobalStatsS
         wins: 0,
         winPercentage: 0,
         gamesPlayed: 0,
+        firstPlaceCount: 0,
+        secondPlaceCount: 0,
+        thirdPlaceCount: 0,
         totalScore: 0,
         averageGameScore: 0,
         okeyThrows: 0,
@@ -202,24 +213,24 @@ export function computeGlobalStats(games: Game[], rounds: Round[]): GlobalStatsS
   for (const game of games) {
     const gameRounds = roundsByGame[game.id] ?? []
     const gameDate = game.finished_at ?? game.created_at
-    const winners = getGameWinners(game, gameRounds)
+    const playerTotals = computeGameTotals(game, gameRounds)
+    const winners = getGameWinners(playerTotals, winnersCount)
 
-    if (
-      !longestGame ||
-      gameRounds.length > longestGame.rounds
-    ) {
+    if (!longestGame || gameRounds.length > longestGame.rounds) {
       longestGame = { rounds: gameRounds.length, date: gameDate, gameId: game.id }
     }
 
     for (const player of game.players) {
       const stats = ensurePlayer(player)
       stats.gamesPlayed++
-      const gameTotal = gameRounds.reduce(
-        (sum, r) => sum + getScoreForPlayer(r.scores, player),
-        0
-      )
+      const gameTotal = playerTotals[player] ?? 0
       stats.totalScore += gameTotal
-      if (winners.some((w) => w === player)) stats.wins++
+
+      const rank = getPlayerRank(player, playerTotals)
+      if (winners.includes(player)) stats.wins++
+      if (rank === 1) stats.firstPlaceCount++
+      if (rank === 2) stats.secondPlaceCount++
+      if (rank === 3) stats.thirdPlaceCount++
     }
 
     for (const round of gameRounds) {
@@ -227,8 +238,7 @@ export function computeGlobalStats(games: Game[], rounds: Round[]): GlobalStatsS
       if (winner && round.okey_thrown) {
         totalOkeyThrows++
         okeyThrowByPlayer.set(winner, (okeyThrowByPlayer.get(winner) ?? 0) + 1)
-        const ps = ensurePlayer(winner)
-        ps.okeyThrows++
+        ensurePlayer(winner).okeyThrows++
       }
 
       for (const player of game.players) {
@@ -274,11 +284,18 @@ export function computeGlobalStats(games: Game[], rounds: Round[]): GlobalStatsS
     totalOkeyBurns,
     playerStats,
     records: {
-      highestPenalty: highestPenalty,
+      highestPenalty,
       lowestScore,
       mostOkeyThrows: topOkeyThrow ? { player: topOkeyThrow[0], count: topOkeyThrow[1] } : null,
       mostOkeyBurns: topOkeyBurn ? { player: topOkeyBurn[0], count: topOkeyBurn[1] } : null,
       longestGame,
     },
   }
+}
+
+export function getRankEmoji(rank: number): string {
+  if (rank === 1) return '🥇'
+  if (rank === 2) return '🥈'
+  if (rank === 3) return '🥉'
+  return `${rank}.`
 }
