@@ -5,6 +5,7 @@ import { supabase, fetchActiveGames, fetchFinishedGames, signOut } from '@/lib/s
 import type { Game } from '@/types'
 import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Users } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
+import { GameResultModal } from '@/components/GameResultModal'
 
 export const Route = createFileRoute('/home')({
   beforeLoad: async () => {
@@ -22,6 +23,7 @@ function HomePage() {
   const [finishedGames, setFinishedGames] = useState<Game[]>([])
   const [loading, setLoading] = useState(true)
   const [userEmail, setUserEmail] = useState('')
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -147,7 +149,7 @@ function HomePage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }}
                     >
-                      <GameCard game={game} />
+                      <GameCard game={game} onFinishedClick={setSelectedGameId} />
                     </motion.div>
                   ))}
                 </div>
@@ -164,18 +166,36 @@ function HomePage() {
           </>
         )}
       </div>
+
+      <GameResultModal
+        gameId={selectedGameId ?? ''}
+        isOpen={!!selectedGameId}
+        onClose={() => setSelectedGameId(null)}
+        onViewScoreboard={(gameId) => {
+          setSelectedGameId(null)
+          navigate({ to: '/game/$gameId', params: { gameId } })
+        }}
+      />
     </div>
   )
 }
 
-function GameCard({ game, isActive }: { game: Game; isActive?: boolean }) {
+function GameCard({
+  game,
+  isActive,
+  onFinishedClick,
+}: {
+  game: Game
+  isActive?: boolean
+  onFinishedClick?: (gameId: string) => void
+}) {
   const navigate = useNavigate()
 
   const handleClick = () => {
     if (isActive) {
       navigate({ to: '/game/$gameId', params: { gameId: game.id } })
     } else {
-      navigate({ to: '/game-over/$gameId', params: { gameId: game.id } })
+      onFinishedClick?.(game.id)
     }
   }
 

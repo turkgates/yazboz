@@ -121,6 +121,17 @@ export async function fetchPlayers(userId: string) {
     .returns<SavedPlayer[]>()
 }
 
+export async function searchPlayersByName(userId: string, query: string, limit = 5) {
+  if (!query.trim()) return { data: [] as SavedPlayer[], error: null }
+  return supabase
+    .from('players')
+    .select('id, name, avatar_url')
+    .eq('user_id', userId)
+    .ilike('name', `${query}%`)
+    .limit(limit)
+    .returns<Pick<SavedPlayer, 'id' | 'name' | 'avatar_url'>[]>()
+}
+
 export async function createPlayer(player: Omit<SavedPlayer, 'created_at'>) {
   return supabase
     .from('players')

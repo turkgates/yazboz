@@ -10,15 +10,15 @@ export const Route = createFileRoute('/tracker')({
   component: TrackerPage,
 })
 
-const STORAGE_KEY = 'yazboz-tile-tracker'
+const STORAGE_KEY = 'okey-tracker-state'
 
 type TileState = 0 | 1 | 2
 
 interface TrackerData {
-  black: TileState[][]
-  red: TileState[][]
-  yellow: TileState[][]
-  green: TileState[][]
+  black: TileState[]
+  red: TileState[]
+  yellow: TileState[]
+  green: TileState[]
   fake: TileState[]
 }
 
@@ -31,19 +31,39 @@ const COLORS = [
 
 function createInitialData(): TrackerData {
   const row = () => Array.from({ length: 13 }, () => 0 as TileState)
-  return {
-    black: [row(), row()],
-    red: [row(), row()],
-    yellow: [row(), row()],
-    green: [row(), row()],
-    fake: [0, 0],
+  return { black: row(), red: row(), yellow: row(), green: row(), fake: [0, 0] }
+}
+
+function migrateData(raw: unknown): TrackerData {
+  const initial = createInitialData()
+  if (!raw || typeof raw !== 'object') return initial
+
+  const data = raw as Record<string, unknown>
+  const result = { ...initial }
+
+  for (const key of ['black', 'red', 'yellow', 'green'] as const) {
+    const val = data[key]
+    if (Array.isArray(val)) {
+      if (Array.isArray(val[0])) {
+        result[key] = (val[0] as TileState[]).slice(0, 13)
+        while (result[key].length < 13) result[key].push(0)
+      } else if (val.length === 13) {
+        result[key] = val as TileState[]
+      }
+    }
   }
+
+  if (Array.isArray(data.fake) && data.fake.length === 2) {
+    result.fake = data.fake as TileState[]
+  }
+
+  return result
 }
 
 function loadData(): TrackerData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as TrackerData
+    if (raw) return migrateData(JSON.parse(raw))
   } catch {}
   return createInitialData()
 }
@@ -68,25 +88,25 @@ function TrackerPage() {
     saveData(newData)
   }
 
-  const cycleTile = (colorKey: keyof Omit<TrackerData, 'fake'>, copy: number, num: number) => {
-    const next = structuredClone(data)
-    next[colorKey][copy][num] = nextState(next[colorKey][copy][num])
+  const cycleTile = (colorKey: keyof Omit<TrackerData, 'fake'>, num: number) => {
+    const next = { ...data, [colorKey]: [...data[colorKey]] }
+    next[colorKey][num] = nextState(next[colorKey][num])
     update(next)
   }
 
   const cycleFake = (index: number) => {
-    const next = structuredClone(data)
+    const next = { ...data, fake: [...data.fake] as TileState[] }
     next.fake[index] = nextState(next.fake[index])
     update(next)
   }
 
   const handleReset = () => {
-    if (!confirm('Tüm taş takibini sıfırlamak istediğinizden emin misiniz?')) return
+    if (!confirm('Tüm taşları sıfırlamak istediğinizden emin misiniz?')) return
     update(createInitialData())
   }
 
   return (
-    <div className="min-h-dvh bg-[#1a1a2e] flex flex-col pb-20">
+    <div className="min-h-dvh bg-[#1a1a2e] flex flex-col pb-20 overflow-x-hidden">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center justify-between py-4 max-w-lg mx-auto">
           <h1 className="text-lg font-bold text-white">Taş Takip</h1>
@@ -100,55 +120,50 @@ function TrackerPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-3 py-4 max-w-lg mx-auto w-full space-y-6 overflow-y-auto">
+      <div className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-6 overflow-y-auto overflow-x-hidden">
         {COLORS.map(({ key, label, bg, border }) => (
-          <section key={key}>
-            <h2 className={`text-sm font-bold mb-2 ${label === 'Siyah' ? 'text-gray-300' : label === 'Kırmızı' ? 'text-red-400' : label === 'Sarı' ? 'text-yellow-400' : 'text-teal-400'}`}>
+          <section key={key} className="overflow-x-hidden">
+            <h2
+              className={`text-sm font-bold mb-3 ${
+                label === 'Siyah'
+                  ? 'text-gray-300'
+                  : label === 'Kırmızı'
+                    ? 'text-red-400'
+                    : label === 'Sarı'
+                      ? 'text-yellow-400'
+                      : 'text-teal-400'
+              }`}
+            >
               {label}
             </h2>
-            <div className="flex gap-0.5 mb-1 px-0.5">
-              {Array.from({ length: 13 }, (_, i) => (
-                <span key={i} className="w-11 text-center text-[10px] text-[#718096] shrink-0">
-                  {i + 1}
-                </span>
+            <div className="tile-grid">
+              {Array.from({ length: 13 }, (_, num) => (
+                <TileButton
+                  key={num}
+                  value={num + 1}
+                  state={data[key][num]}
+                  bg={bg}
+                  border={border}
+                  onClick={() => cycleTile(key, num)}
+                />
               ))}
             </div>
-            {[0, 1].map((copy) => (
-              <div key={copy} className="flex gap-0.5 mb-1">
-                {Array.from({ length: 13 }, (_, num) => (
-                  <TileButton
-                    key={num}
-                    value={num + 1}
-                    state={data[key][copy][num]}
-                    bg={bg}
-                    border={border}
-                    onClick={() => cycleTile(key, copy, num)}
-                  />
-                ))}
-              </div>
-            ))}
           </section>
         ))}
 
-        <section>
+        <section className="overflow-x-hidden">
           <h2 className="text-sm font-bold mb-3 text-purple-400">Sahte Okey</h2>
-          <div className="flex gap-3">
+          <div className="tile-grid">
             {data.fake.map((state, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => cycleFake(i)}
-                className={`relative w-11 h-11 rounded-lg border-2 border-purple-400 bg-purple-600 flex items-center justify-center text-white text-xs font-bold transition-all ${
-                  state === 0 ? 'opacity-100' : state === 1 ? 'opacity-40' : 'opacity-[0.15]'
+                className={`tile-btn rounded-lg border-2 border-purple-400 bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold transition-all ${
+                  state === 0 ? '' : state === 1 ? 'tile-btn--state-1' : 'tile-btn--state-2'
                 }`}
               >
-                SAHTE
-                {state >= 1 && (
-                  <span className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-0.5 bg-white/80 pointer-events-none" />
-                )}
-                {state >= 2 && (
-                  <span className="absolute inset-x-1 top-1/3 -translate-y-1/2 h-0.5 bg-white/80 pointer-events-none" />
-                )}
+                <span className="tile-num">SAHTE</span>
               </button>
             ))}
           </div>
@@ -175,17 +190,11 @@ function TileButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative w-11 h-11 shrink-0 rounded-lg border-2 ${bg} ${border} flex items-center justify-center text-white text-sm font-bold transition-all ${
-        state === 0 ? 'opacity-100' : state === 1 ? 'opacity-40' : 'opacity-[0.15]'
+      className={`tile-btn rounded-lg border-2 ${bg} ${border} flex items-center justify-center text-white text-sm font-bold transition-all ${
+        state === 0 ? '' : state === 1 ? 'tile-btn--state-1' : 'tile-btn--state-2'
       }`}
     >
-      {value}
-      {state >= 1 && (
-        <span className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-0.5 bg-white/80 pointer-events-none" />
-      )}
-      {state >= 2 && (
-        <span className="absolute inset-x-1 top-1/3 -translate-y-1/2 h-0.5 bg-white/80 pointer-events-none" />
-      )}
+      <span className="tile-num">{value}</span>
     </button>
   )
 }

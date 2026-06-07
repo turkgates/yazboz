@@ -1,11 +1,11 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { supabase, fetchFinishedGames } from '@/lib/supabase'
 import type { Game } from '@/types'
 import { ArrowLeft, Trophy, Hash } from 'lucide-react'
 import { formatGameDate } from '@/lib/dateUtils'
-import { GameDetailModal } from '@/components/stats/GameDetailModal'
+import { GameResultModal } from '@/components/GameResultModal'
 
 export const Route = createFileRoute('/stats')({
   beforeLoad: async () => {
@@ -19,7 +19,7 @@ function StatsPage() {
   const navigate = useNavigate()
   const [games, setGames] = useState<Game[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedGame, setSelectedGame] = useState<Game | null>(null)
+  const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   useEffect(() => {
     loadStats()
@@ -80,7 +80,7 @@ function StatsPage() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    onClick={() => setSelectedGame(game)}
+                    onClick={() => setSelectedGameId(game.id)}
                     className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors w-full"
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -98,11 +98,15 @@ function StatsPage() {
         )}
       </div>
 
-      <AnimatePresence>
-        {selectedGame && (
-          <GameDetailModal game={selectedGame} onClose={() => setSelectedGame(null)} />
-        )}
-      </AnimatePresence>
+      <GameResultModal
+        gameId={selectedGameId ?? ''}
+        isOpen={!!selectedGameId}
+        onClose={() => setSelectedGameId(null)}
+        onViewScoreboard={(gameId) => {
+          setSelectedGameId(null)
+          navigate({ to: '/game/$gameId', params: { gameId } })
+        }}
+      />
     </div>
   )
 }

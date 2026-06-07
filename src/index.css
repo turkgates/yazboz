@@ -79,3 +79,40 @@ input[type="number"] {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+.tile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow-x: hidden;
+}
+
+@media (orientation: landscape) {
+  .tile-grid {
+    flex-wrap: nowrap;
+  }
+}
+
+.tile-btn {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+}
+
+.tile-btn--state-1 {
+  opacity: 0.4;
+}
+
+.tile-btn--state-1 .tile-num {
+  text-decoration: line-through;
+}
+
+.tile-btn--state-2 {
+  opacity: 0.12;
+}
+
+.tile-btn--state-2 .tile-num {
+  text-decoration: line-through;
+  text-decoration-style: double;
+}
