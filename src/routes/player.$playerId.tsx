@@ -29,6 +29,8 @@ import {
   type PlayerProfileStats,
 } from '@/lib/statsUtils'
 import { formatGameDate } from '@/lib/dateUtils'
+import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
+import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 
 export const Route = createFileRoute('/player/$playerId')({
   beforeLoad: async () => {
@@ -59,6 +61,10 @@ function PlayerProfilePage() {
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
+  const [allGames, setAllGames] = useState<Game[]>([])
+  const [allRoundsByGame, setAllRoundsByGame] = useState<Record<string, import('@/types').Round[]>>({})
+  const [winnersCount, setWinnersCount] = useState(1)
+  const [gameFilter, setGameFilter] = useState<GameTypeFilter>('all')
 
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -78,30 +84,46 @@ function PlayerProfilePage() {
     setPlayer(playerData)
 
     const { data: profile } = await fetchProfile(user.id)
-    const winnersCount = profile?.winners_count ?? 1
+    setWinnersCount(profile?.winners_count ?? 1)
 
     const { games, roundsByGame } = await fetchPlayerGamesWithRounds(user.id, playerData.name)
-    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame, winnersCount))
-
-    const items: GameHistoryItem[] = games.slice(0, 10).map((game) => {
-      const rounds = roundsByGame[game.id] ?? []
-      const playerTotals = computeGameTotals(game, rounds)
-      const winners = getGameWinners(playerTotals, winnersCount)
-      const rank = getPlayerRank(playerData.name, playerTotals)
-      return {
-        game,
-        total: getPlayerGameTotal(rounds, playerData.name),
-        rank,
-        isWinner: winners.some((w) => w.toLowerCase() === playerData.name.toLowerCase()),
-      }
-    })
-    setHistory(items)
+    setAllGames(games)
+    setAllRoundsByGame(roundsByGame)
+    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame, profile?.winners_count ?? 1))
     setLoading(false)
   }
 
   useEffect(() => {
     loadProfile()
   }, [playerId])
+
+  useEffect(() => {
+    if (!player) return
+    const filteredGames = allGames.filter((g) => matchesGameFilter(g, gameFilter))
+    const filteredRoundsByGame: Record<string, import('@/types').Round[]> = {}
+    for (const game of filteredGames) {
+      filteredRoundsByGame[game.id] = allRoundsByGame[game.id] ?? []
+    }
+
+    setStats(computePlayerProfileStats(player.name, filteredGames, filteredRoundsByGame, winnersCount))
+
+    const items: GameHistoryItem[] = filteredGames.slice(0, 10).map((game) => {
+      const rounds = filteredRoundsByGame[game.id] ?? []
+      const playerTotals = computeGameTotals(game, rounds)
+      const winners = getGameWinners(playerTotals, winnersCount)
+      const rank = getPlayerRank(player.name, playerTotals)
+      const total = isSayiliGame(game)
+        ? getSayiliEntityScore(game, rounds, player.name)
+        : getPlayerGameTotal(rounds, player.name)
+      return {
+        game,
+        total,
+        rank,
+        isWinner: winners.some((w) => w.toLowerCase() === player.name.toLowerCase()),
+      }
+    })
+    setHistory(items)
+  }, [player, allGames, allRoundsByGame, gameFilter, winnersCount])
 
   if (loading) {
     return (
@@ -132,6 +154,8 @@ function PlayerProfilePage() {
       </div>
 
       <div className="flex-1 px-4 py-6 pb-20 max-w-lg mx-auto w-full">
+        <GameTypeFilterTabs value={gameFilter} onChange={setGameFilter} />
+
         <div className="flex flex-col items-center mb-6">
           <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={96} className="mb-3" />
           <h2 className="text-white text-xl font-bold mb-3">{player.name}</h2>
@@ -226,12 +250,21 @@ function PlayerProfilePage() {
                     {formatGameDate(item.game.finished_at ?? item.game.created_at)}
                   </p>
                 </div>
+                <p className="text-[#718096] text-xs mb-1">{getGameBadgeLabel(item.game)}</p>
                 <p
                   className={`text-sm font-bold ${
-                    item.total < 0 ? 'text-green-400' : item.total > 0 ? 'text-red-400' : 'text-white'
+                    isSayiliGame(item.game)
+                      ? item.total <= 0
+                        ? 'text-green-400'
+                        : 'text-white'
+                      : item.total < 0
+                        ? 'text-green-400'
+                        : item.total > 0
+                          ? 'text-red-400'
+                          : 'text-white'
                   }`}
                 >
-                  Toplam: {formatScore(item.total)}
+                  {isSayiliGame(item.game) ? 'Sayı' : 'Toplam'}: {isSayiliGame(item.game) ? item.total : formatScore(item.total)}
                 </p>
               </motion.button>
             ))}

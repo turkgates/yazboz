@@ -12,14 +12,17 @@ import {
 } from '@/lib/supabase'
 import type { SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
-import { Settings, Plus, MoreVertical } from 'lucide-react'
-import { BackButton } from '@/components/layout/BackButton'
+import { Plus, MoreVertical } from 'lucide-react'
 import type { Game, RoundInput, Round } from '@/types'
 import { calculateAllScores } from '@/lib/calculations'
 import { v4 as uuidv4 } from 'uuid'
-import { formatGameDate } from '@/lib/dateUtils'
 import { RoundEntryModal } from '@/components/game/RoundEntryModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { GameHeader } from '@/components/game/GameHeader'
+import { TeamScoreTable } from '@/components/game/TeamScoreTable'
+import { SayiliGameView } from '@/components/game/SayiliGameView'
+import { getTeams, isCezaliSettings, isSayiliGame, teamLabel } from '@/lib/gameTypes'
+import { DEFAULT_SETTINGS, type CezaliGameSettings } from '@/types'
 
 export const Route = createFileRoute('/game/$gameId')({
   beforeLoad: async () => {
@@ -70,6 +73,9 @@ function GamePage() {
     setLoading(false)
   }
 
+  const getCezaliSettings = (game: Game): CezaliGameSettings =>
+    isCezaliSettings(game.settings) ? game.settings : DEFAULT_SETTINGS
+
   const buildScores = (input: RoundInput) => {
     if (!currentGame) return {}
     return calculateAllScores(
@@ -77,7 +83,7 @@ function GamePage() {
       input.color,
       input.okeyThrown,
       input.doubleFinish,
-      currentGame.settings,
+      getCezaliSettings(currentGame),
       input.fakeOkey ?? false
     )
   }
@@ -206,6 +212,12 @@ function GamePage() {
     )
   }
 
+  if (isSayiliGame(currentGame)) {
+    return <SayiliGameView gameId={gameId} />
+  }
+
+  const isEsli = currentGame.game_type === 'cezali_esli'
+  const teams = isEsli ? getTeams(currentGame) : []
   const isFinished = currentGame.status === 'finished'
   const gameOver = isGameFinished()
   const currentRound = rounds.length + 1
@@ -214,59 +226,51 @@ function GamePage() {
     totals[player] = rounds.reduce((sum, r) => sum + (r.scores[player] ?? 0), 0)
   }
 
+  const teamTotals: Record<string, number> = {}
+  if (isEsli) {
+    for (const team of teams) {
+      teamTotals[teamLabel(team)] = team.reduce((sum, p) => sum + (totals[p] ?? 0), 0)
+    }
+  }
+
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
-      <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top shrink-0">
-        <div className="flex items-center justify-between py-3 max-w-lg mx-auto">
-          <BackButton showLabel={isFinished} className="shrink-0" />
-          <div className="text-center flex-1 min-w-0 px-2">
-            {isFinished ? (
-              <span className="inline-block bg-[#f5a623]/25 text-[#f5a623] text-xs font-bold px-3 py-1 rounded-full mb-1 border border-[#f5a623]/40">
-                ✓ Tamamlanan Oyun
-              </span>
-            ) : (
-              <p className="text-white font-semibold text-sm">
-                {gameOver
-                  ? 'Oyun Bitti!'
-                  : `El ${Math.min(currentRound, currentGame.total_rounds)} / ${currentGame.total_rounds}`}
-              </p>
-            )}
-            {currentGame.settings.note && (
-              <p className="text-white text-xs font-medium truncate">{currentGame.settings.note}</p>
-            )}
-            <p className="text-[#718096] text-xs">{formatGameDate(currentGame.created_at)}</p>
-          </div>
-          {!isFinished ? (
-            <button
-              type="button"
-              onClick={() => setShowSettings(true)}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-white transition-colors shrink-0"
-            >
-              <Settings size={18} />
-            </button>
-          ) : (
-            <div className="w-9 shrink-0" />
-          )}
-        </div>
-      </div>
+      <GameHeader
+        game={currentGame}
+        isFinished={isFinished}
+        subtitle={
+          gameOver
+            ? 'Oyun Bitti!'
+            : `El ${Math.min(currentRound, currentGame.total_rounds)} / ${currentGame.total_rounds}`
+        }
+        onSettings={!isFinished ? () => setShowSettings(true) : undefined}
+      />
 
       <div className="flex-1 overflow-auto px-2 py-3 max-w-lg mx-auto w-full">
-        <ScoreTable
-          players={currentGame.players}
-          rounds={rounds}
-          totals={totals}
-          currentRound={currentRound}
-          totalRounds={currentGame.total_rounds}
-          savedPlayers={savedPlayers}
-          readOnly={isFinished}
-          openMenuId={openMenuId}
-          onMenuToggle={setOpenMenuId}
-          onEdit={openEditModal}
-          onDelete={(id) => {
-            setConfirmDeleteId(id)
-            setOpenMenuId(null)
-          }}
-        />
+        {isEsli ? (
+          <TeamScoreTable
+            teams={teams}
+            rounds={rounds}
+            teamTotals={teamTotals}
+          />
+        ) : (
+          <ScoreTable
+            players={currentGame.players}
+            rounds={rounds}
+            totals={totals}
+            currentRound={currentRound}
+            totalRounds={currentGame.total_rounds}
+            savedPlayers={savedPlayers}
+            readOnly={isFinished}
+            openMenuId={openMenuId}
+            onMenuToggle={setOpenMenuId}
+            onEdit={openEditModal}
+            onDelete={(id) => {
+              setConfirmDeleteId(id)
+              setOpenMenuId(null)
+            }}
+          />
+        )}
       </div>
 
       {!isFinished && !gameOver && (
@@ -299,6 +303,7 @@ function GamePage() {
             game={currentGame}
             roundNumber={currentRound}
             editingRound={editingRound}
+            teams={isEsli ? teams : undefined}
             onSave={handleRoundSaved}
             onClose={() => {
               setShowModal(false)
@@ -550,7 +555,7 @@ function GameSettingsModal({
 }) {
   const { loadGame } = useGameStore()
   const isActive = game.status === 'active'
-  const [note, setNote] = useState(game.settings.note ?? '')
+  const [note, setNote] = useState('note' in game.settings ? (game.settings.note ?? '') : '')
   const [totalRounds, setTotalRounds] = useState(game.total_rounds)
   const [playerNames, setPlayerNames] = useState<string[]>([...game.players])
   const [saving, setSaving] = useState(false)
@@ -712,7 +717,7 @@ function GameSettingsModal({
               </label>
               <input
                 type="text"
-                value="Cezalı Okey"
+                value={game.game_type === 'cezali_esli' ? 'Cezalı Okey - Eşli' : 'Cezalı Okey'}
                 disabled
                 className="w-full bg-[#0f3460]/20 border border-[#2d3748] rounded-xl py-3 px-4 text-[#718096] text-sm cursor-not-allowed"
               />

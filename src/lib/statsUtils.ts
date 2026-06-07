@@ -1,5 +1,7 @@
-import type { Game, Round } from '@/types'
+import type { CezaliGameSettings, Game, Round } from '@/types'
+import { DEFAULT_SETTINGS } from '@/types'
 import { detectOkeyBurnType, getGameWinners, getLeader, getPlayerRank } from '@/lib/calculations'
+import { isCezaliSettings } from '@/lib/gameTypes'
 
 export function getScoreForPlayer(scores: Record<string, number>, playerName: string): number {
   if (playerName in scores) return scores[playerName] ?? 0
@@ -44,10 +46,13 @@ export function isOkeyBurn(
 ): boolean {
   const score = getScoreForPlayer(round.scores, playerName)
   if (score <= 0) return false
+  const settings: CezaliGameSettings = isCezaliSettings(game.settings)
+    ? game.settings
+    : DEFAULT_SETTINGS
   return detectOkeyBurnType(
     score,
     round.color,
-    game.settings,
+    settings,
     round.fake_okey ?? false
   ) !== null
 }

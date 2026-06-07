@@ -2,7 +2,9 @@ export type Color = 'black' | 'red' | 'yellow' | 'green'
 
 export type GameStatus = 'active' | 'finished'
 
-export type GameType = 'cezali_okey'
+export type GameType = 'cezali_okey' | 'cezali_esli' | 'sayili_okey'
+
+export type GameSubtype = 'solo' | 'esli'
 
 export interface ColorMultipliers {
   black: number
@@ -18,14 +20,26 @@ export interface WinnerBonus {
   green: number
 }
 
-export interface GameSettings {
+export interface CezaliGameSettings {
   colorMultipliers: ColorMultipliers
   winnerBonus: WinnerBonus
   defaultRounds: number
   note?: string
 }
 
-export const DEFAULT_SETTINGS: GameSettings = {
+export interface SayiliOkeySettings {
+  startScore: number
+  showIndicator: boolean
+  indicatorValue: number
+  normalFinish: number
+  okeyOrDouble: number
+  okeyAndDouble: number
+  note?: string
+}
+
+export type GameSettings = CezaliGameSettings | SayiliOkeySettings
+
+export const DEFAULT_SETTINGS: CezaliGameSettings = {
   colorMultipliers: {
     black: 5,
     red: 4,
@@ -45,9 +59,11 @@ export interface Game {
   id: string
   user_id: string
   game_type: GameType
+  game_subtype?: GameSubtype
   status: GameStatus
   total_rounds: number
   players: string[]
+  teams?: string[][] | null
   settings: GameSettings
   created_at: string
   finished_at?: string | null
@@ -62,6 +78,7 @@ export interface Round {
   double_finish: boolean
   fake_okey?: boolean
   scores: Record<string, number>
+  indicator_players?: string[]
   created_at: string
 }
 

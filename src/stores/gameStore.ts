@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Game, Round, RoundInput, GameSettings } from '@/types'
+import type { Game, Round, RoundInput, CezaliGameSettings } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import { calculateAllScores, calculateTotals, getLeader } from '@/lib/calculations'
+import { isCezaliSettings, isSayiliGame } from '@/lib/gameTypes'
 
 interface GameStore {
   currentGame: Game | null
@@ -26,8 +27,8 @@ interface GameStore {
 }
 
 interface SettingsStore {
-  settings: GameSettings
-  updateSettings: (updates: Partial<GameSettings>) => void
+  settings: CezaliGameSettings
+  updateSettings: (updates: Partial<CezaliGameSettings>) => void
   resetSettings: () => void
 }
 
@@ -44,12 +45,16 @@ export const useGameStore = create<GameStore>()(
         const state = get()
         if (!state.currentGame) return
 
+        const cezaliSettings: CezaliGameSettings = isCezaliSettings(state.currentGame.settings)
+          ? state.currentGame.settings
+          : DEFAULT_SETTINGS
+
         const scores = calculateAllScores(
           input.playerResults,
           input.color,
           input.okeyThrown,
           input.doubleFinish,
-          state.currentGame.settings,
+          cezaliSettings,
           input.fakeOkey ?? false
         )
 
@@ -76,12 +81,16 @@ export const useGameStore = create<GameStore>()(
         const state = get()
         if (!state.currentGame) return
 
+        const cezaliSettings: CezaliGameSettings = isCezaliSettings(state.currentGame.settings)
+          ? state.currentGame.settings
+          : DEFAULT_SETTINGS
+
         const scores = calculateAllScores(
           input.playerResults,
           input.color,
           input.okeyThrown,
           input.doubleFinish,
-          state.currentGame.settings,
+          cezaliSettings,
           input.fakeOkey ?? false
         )
 
@@ -146,7 +155,9 @@ export const useGameStore = create<GameStore>()(
       isGameFinished: () => {
         const { currentGame, rounds } = get()
         if (!currentGame) return false
-        return rounds.length >= currentGame.total_rounds || currentGame.status === 'finished'
+        if (currentGame.status === 'finished') return true
+        if (isSayiliGame(currentGame)) return false
+        return rounds.length >= currentGame.total_rounds
       },
     }),
     {

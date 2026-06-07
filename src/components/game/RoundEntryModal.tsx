@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import type { Color, Game, Round, RoundInput } from '@/types'
-import { COLOR_LABELS } from '@/types'
+import type { Color, Game, Round, RoundInput, CezaliGameSettings } from '@/types'
+import { COLOR_LABELS, DEFAULT_SETTINGS } from '@/types'
+import { isCezaliSettings, teamLabel } from '@/lib/gameTypes'
 import type { PlayerRoundInput } from '@/lib/calculations'
 import {
   deriveOkeyBurnType,
@@ -15,6 +16,7 @@ interface RoundEntryModalProps {
   game: Game
   roundNumber: number
   editingRound?: Round | null
+  teams?: string[][]
   onSave: (input: RoundInput) => void
   onClose: () => void
 }
@@ -33,10 +35,11 @@ export function RoundEntryModal({
   game,
   roundNumber,
   editingRound,
+  teams,
   onSave,
   onClose,
 }: RoundEntryModalProps) {
-  const settings = game.settings
+  const settings: CezaliGameSettings = isCezaliSettings(game.settings) ? game.settings : DEFAULT_SETTINGS
   const isEditing = !!editingRound
 
   const [color, setColor] = useState<Color | null>(editingRound?.color ?? null)
@@ -112,6 +115,17 @@ export function RoundEntryModal({
       next[player] = status
       return next
     })
+  }
+
+  const setTeamStatus = (team: string[], status: PlayerUIStatus) => {
+    for (const player of team) setPlayerStatus(player, status)
+    if (status === 'normal') return
+    const pts = rawPoints[team[0]] ?? ''
+    if (pts) {
+      const updated = { ...rawPoints }
+      for (const p of team) updated[p] = pts
+      setRawPoints(updated)
+    }
   }
 
   const buildPlayerInput = (player: string): PlayerRoundInput => {
@@ -308,27 +322,30 @@ export function RoundEntryModal({
             </label>
           </section>
 
-          {/* BÖLÜM 3 - Oyuncu durumları */}
+          {/* BÖLÜM 3 - Oyuncu / Takım durumları */}
           <section>
             <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-              Oyuncu Durumları
+              {teams ? 'Takım Durumları' : 'Oyuncu Durumları'}
             </p>
             <div className="flex flex-col gap-3">
-              {game.players.map((player) => {
+              {(teams ?? game.players.map((p) => [p])).map((group) => {
+                const isTeam = teams !== undefined
+                const label = isTeam ? teamLabel(group) : group[0]
+                const player = group[0]
                 const status = playerStatuses[player] ?? 'normal'
                 const isWinner = status === 'winner'
                 const isBurned = status === 'okey_burned'
 
                 return (
                   <div
-                    key={player}
+                    key={label}
                     className={`bg-[#0f3460]/40 border rounded-xl p-3 ${
                       isWinner ? 'border-green-500/50' : isBurned ? 'border-orange-500/50' : 'border-[#2d3748]'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">
-                        {player}
+                        {label}
                       </span>
                       <div className="flex gap-1 shrink-0">
                         {(['normal', 'okey_burned', 'winner'] as const).map((s) => {
@@ -339,7 +356,7 @@ export function RoundEntryModal({
                               key={s}
                               type="button"
                               disabled={disabled}
-                              onClick={() => setPlayerStatus(player, s)}
+                              onClick={() => (isTeam ? setTeamStatus(group, s) : setPlayerStatus(player, s))}
                               className={`px-2 py-1 rounded-full text-[10px] font-semibold transition-colors ${
                                 status === s
                                   ? s === 'winner'
@@ -363,9 +380,14 @@ export function RoundEntryModal({
                         inputMode="numeric"
                         placeholder="Elindeki puan"
                         value={rawPoints[player] ?? ''}
-                        onChange={(e) =>
-                          setRawPoints((p) => ({ ...p, [player]: e.target.value }))
-                        }
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setRawPoints((p) => {
+                            const next = { ...p, [player]: val }
+                            if (isTeam) for (const tp of group) next[tp] = val
+                            return next
+                          })
+                        }}
                         className="w-full bg-[#1a1a2e] border border-[#2d3748] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-[#e94560]"
                       />
                     )}
@@ -379,7 +401,7 @@ export function RoundEntryModal({
             </div>
             {!noWinner && (
               <p className="text-[#718096] text-xs mt-2">
-                Sadece 1 kişi bitti seçilebilir. Birden fazla kişi okeyi yakabilir.
+                Sadece 1 {teams ? 'takım' : 'kişi'} bitti seçilebilir.
               </p>
             )}
           </section>

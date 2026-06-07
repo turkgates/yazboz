@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
-import { getRanking } from '@/lib/calculations'
+import { getGameRanking, getGameBadgeLabel, isSayiliGame } from '@/lib/gameTypes'
 import { Home, RotateCcw } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
 import { v4 as uuidv4 } from 'uuid'
@@ -63,11 +63,13 @@ function GameOverPage() {
     const newGame: Game = {
       id: newGameId,
       user_id: user.id,
-      game_type: 'cezali_okey',
+      game_type: currentGame.game_type,
+      game_subtype: currentGame.game_subtype,
       status: 'active',
       total_rounds: currentGame.total_rounds,
       players: currentGame.players,
-      settings,
+      teams: currentGame.teams,
+      settings: isSayiliGame(currentGame) ? currentGame.settings : settings,
       created_at: new Date().toISOString(),
       finished_at: null,
     }
@@ -88,12 +90,10 @@ function GameOverPage() {
     )
   }
 
-  const totals: Record<string, number> = {}
-  for (const player of currentGame.players) {
-    totals[player] = rounds.reduce((sum, r) => sum + (r.scores[player] ?? 0), 0)
-  }
-  const ranking = getRanking(totals)
+  const ranking = getGameRanking(currentGame, rounds)
   const winner = ranking[0]
+  const isSayili = isSayiliGame(currentGame)
+  const scoreLabel = isSayili ? 'sayı' : 'puan'
 
   const medals = ['🥇', '🥈', '🥉', '4️⃣']
   const rankColors = [
@@ -108,6 +108,7 @@ function GameOverPage() {
       <div className="w-full max-w-sm mb-4">
         <BackButton className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] mb-4" />
         <p className="text-[#718096] text-xs text-center">{formatGameDate(currentGame.created_at)}</p>
+        <p className="text-[#a0aec0] text-[10px] text-center mt-1">{getGameBadgeLabel(currentGame)}</p>
       </div>
 
       <motion.div
@@ -133,7 +134,9 @@ function GameOverPage() {
           <PlayerNameLink name={winner.name} playerId={playerDataByName(winner.name)?.id} />
         </h1>
         <p className="text-[#f5a623] font-semibold">kazandı!</p>
-        <p className="text-[#718096] text-sm mt-1">Toplam: {winner.total} puan</p>
+        <p className="text-[#718096] text-sm mt-1">
+          {isSayili ? 'Kalan sayı' : 'Toplam'}: {winner.total} {scoreLabel}
+        </p>
       </motion.div>
 
       <div className="w-full max-w-sm flex flex-col gap-3 mb-8">
@@ -165,10 +168,20 @@ function GameOverPage() {
               </div>
             </div>
             <div className="text-right">
-              <p className={`font-bold text-lg ${item.total < 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <p
+                className={`font-bold text-lg ${
+                  isSayili
+                    ? item.total <= 0
+                      ? 'text-green-400'
+                      : 'text-white'
+                    : item.total < 0
+                      ? 'text-green-400'
+                      : 'text-red-400'
+                }`}
+              >
                 {item.total}
               </p>
-              <p className="text-[#718096] text-xs">puan</p>
+              <p className="text-[#718096] text-xs">{scoreLabel}</p>
             </div>
           </motion.div>
         ))}

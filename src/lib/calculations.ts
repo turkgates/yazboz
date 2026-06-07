@@ -1,4 +1,4 @@
-import type { Color, GameSettings } from '@/types'
+import type { Color, CezaliGameSettings } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 
 export type PlayerStatus = 'winner' | 'loser' | 'okey_burned' | 'no_winner'
@@ -57,7 +57,7 @@ export function getLoserMultiplier(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  colorMultipliers: GameSettings['colorMultipliers']
+  colorMultipliers: CezaliGameSettings['colorMultipliers']
 ): number {
   return colorMultipliers[color] * getSpecialMultiplier(okeyThrown, doubleFinish)
 }
@@ -71,7 +71,7 @@ export function deriveOkeyBurnType(okeyThrown: boolean, doubleFinish: boolean): 
 export function getOkeyBurnPenalty(
   burnType: OkeyBurnType,
   color: Color,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: CezaliGameSettings = DEFAULT_SETTINGS
 ): number {
   const bonus = settings.winnerBonus[color]
   switch (burnType) {
@@ -89,7 +89,7 @@ export function calculatePlayerScore(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS,
+  settings: CezaliGameSettings = DEFAULT_SETTINGS,
   fakeOkey = false
 ): number {
   if (fakeOkey) {
@@ -131,7 +131,7 @@ export function calculateAllScores(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS,
+  settings: CezaliGameSettings = DEFAULT_SETTINGS,
   fakeOkey = false
 ): Record<string, number> {
   const scores: Record<string, number> = {}
@@ -146,7 +146,7 @@ export function reverseRawPoints(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: CezaliGameSettings = DEFAULT_SETTINGS
 ): number {
   const multiplier = getLoserMultiplier(color, okeyThrown, doubleFinish, settings.colorMultipliers)
   if (multiplier === 0) return 0
@@ -156,7 +156,7 @@ export function reverseRawPoints(
 export function reverseNoWinnerRawPoints(
   score: number,
   color: Color,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: CezaliGameSettings = DEFAULT_SETTINGS
 ): number {
   const baseMultiplier = settings.colorMultipliers[color]
   if (baseMultiplier === 0) return 0
@@ -166,7 +166,7 @@ export function reverseNoWinnerRawPoints(
 export function detectOkeyBurnType(
   score: number,
   color: Color,
-  settings: GameSettings = DEFAULT_SETTINGS,
+  settings: CezaliGameSettings = DEFAULT_SETTINGS,
   fakeOkey = false
 ): OkeyBurnType | null {
   const types: OkeyBurnType[] = ['normal_win', 'okey_thrown', 'double_okey']
@@ -200,7 +200,7 @@ export function inferRoundInputFromScores(
     scores: Record<string, number>
   },
   players: string[],
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: CezaliGameSettings = DEFAULT_SETTINGS
 ): InferredRoundState & { fakeOkey: boolean } {
   const fakeOkey = round.fake_okey ?? players.some((p) => isFakeOkeyWinnerScore(round.scores[p] ?? 0))
   const winner = players.find((p) => (round.scores[p] ?? 0) < 0) ?? null
@@ -304,7 +304,7 @@ export function previewRoundScore(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS,
+  settings: CezaliGameSettings = DEFAULT_SETTINGS,
   fakeOkey = false
 ): number {
   return calculatePlayerScore(input, color, okeyThrown, doubleFinish, settings, fakeOkey)
@@ -314,7 +314,7 @@ export function getWinnerBonus(
   color: Color,
   okeyThrown: boolean,
   doubleFinish: boolean,
-  settings: GameSettings = DEFAULT_SETTINGS
+  settings: CezaliGameSettings = DEFAULT_SETTINGS
 ): number {
   const mult = getWinnerPenaltyMultiplier(okeyThrown, doubleFinish)
   return -(settings.winnerBonus[color] * mult)

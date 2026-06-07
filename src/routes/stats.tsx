@@ -18,6 +18,8 @@ import { GameResultModal } from '@/components/GameResultModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
 import { computeGlobalStats, type GlobalStatsSummary } from '@/lib/statsUtils'
+import { matchesGameFilter, getGameBadgeLabel, type GameTypeFilter } from '@/lib/gameTypes'
+import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 
 export const Route = createFileRoute('/stats')({
   beforeLoad: async () => {
@@ -31,12 +33,15 @@ const MEDALS = ['🥇', '🥈', '🥉']
 
 function StatsPage() {
   const navigate = useNavigate()
-  const [games, setGames] = useState<Game[]>([])
+  const [allGames, setAllGames] = useState<Game[]>([])
+  const [allRounds, setAllRounds] = useState<Round[]>([])
   const [globalStats, setGlobalStats] = useState<GlobalStatsSummary | null>(null)
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
+  const [gameFilter, setGameFilter] = useState<GameTypeFilter>('all')
+  const [winnersCount, setWinnersCount] = useState(1)
 
   useEffect(() => {
     loadStats()
@@ -60,9 +65,10 @@ function StatsPage() {
     ])
 
     const finishedGames = gamesRes.data ?? []
-    const winnersCount = profileRes.data?.winners_count ?? 1
+    const wc = profileRes.data?.winners_count ?? 1
 
-    setGames(finishedGames)
+    setAllGames(finishedGames)
+    setWinnersCount(wc)
     setSavedPlayers(playersRes.data ?? [])
 
     if (finishedGames.length > 0) {
@@ -72,13 +78,27 @@ function StatsPage() {
         .in('game_id', finishedGames.map((g) => g.id))
         .returns<Round[]>()
 
-      setGlobalStats(computeGlobalStats(finishedGames, rounds ?? [], winnersCount))
+      setAllRounds(rounds ?? [])
     } else {
-      setGlobalStats(null)
+      setAllRounds([])
     }
 
     setLoading(false)
   }
+
+  useEffect(() => {
+    const filteredGames = allGames.filter((g) => matchesGameFilter(g, gameFilter))
+    const filteredRounds = allRounds.filter((r) =>
+      filteredGames.some((g) => g.id === r.game_id)
+    )
+    if (filteredGames.length > 0) {
+      setGlobalStats(computeGlobalStats(filteredGames, filteredRounds, winnersCount))
+    } else {
+      setGlobalStats(null)
+    }
+  }, [allGames, allRounds, gameFilter, winnersCount])
+
+  const games = allGames.filter((g) => matchesGameFilter(g, gameFilter))
 
   const playerByName = (name: string) =>
     savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())
@@ -120,7 +140,7 @@ function StatsPage() {
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-3 border-[#e94560] border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : games.length === 0 ? (
+        ) : allGames.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="text-5xl mb-4">📊</div>
             <p className="text-white font-medium mb-2">Henüz tamamlanan oyun yok</p>
@@ -128,6 +148,14 @@ function StatsPage() {
           </div>
         ) : (
           <div className="space-y-8">
+            <GameTypeFilterTabs value={gameFilter} onChange={setGameFilter} />
+
+            {games.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-[#718096] text-sm">Bu filtrede tamamlanan oyun yok.</p>
+              </div>
+            ) : (
+              <>
             <section>
               <SectionTitle>Genel Özet</SectionTitle>
               <div className="grid grid-cols-2 gap-3">
@@ -277,12 +305,14 @@ function StatsPage() {
                       </p>
                     </div>
                     <p className="text-[#718096] text-xs">
-                      {game.players.length} oyuncu • {game.total_rounds} el
+                      {getGameBadgeLabel(game)} • {game.players.length} oyuncu
                     </p>
                   </motion.button>
                 ))}
               </div>
             </section>
+              </>
+            )}
           </div>
         )}
       </div>

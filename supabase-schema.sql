@@ -32,9 +32,11 @@ create table if not exists games (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users not null,
   game_type text default 'cezali_okey',
+  game_subtype text default 'solo',
   status text default 'active' check (status in ('active', 'finished')),
   total_rounds integer default 11,
   players jsonb not null,
+  teams jsonb,
   settings jsonb,
   created_at timestamptz default now(),
   finished_at timestamptz
@@ -50,6 +52,7 @@ create table if not exists rounds (
   double_finish boolean default false,
   fake_okey boolean default false,
   scores jsonb not null,
+  indicator_players jsonb default '[]',
   created_at timestamptz default now(),
   unique(game_id, round_number)
 );

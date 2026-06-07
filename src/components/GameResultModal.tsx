@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { useNavigate } from '@tanstack/react-router'
-import type { Game, Round, SavedPlayer } from '@/types'
+import type { CezaliGameSettings, Game, Round, SavedPlayer } from '@/types'
+import { DEFAULT_SETTINGS } from '@/types'
+import { isCezaliSettings } from '@/lib/gameTypes'
 import { supabase, fetchPlayers } from '@/lib/supabase'
-import { calculateTotals, detectOkeyBurnType, getRanking, getLeader } from '@/lib/calculations'
+import { detectOkeyBurnType, getLeader } from '@/lib/calculations'
+import { getGameRanking, getGameBadgeLabel, isCezaliGame, isSayiliGame } from '@/lib/gameTypes'
 import { formatGameDate } from '@/lib/dateUtils'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 
@@ -17,7 +20,7 @@ export interface GameResultModalProps {
 
 interface GameSummary {
   game: Game
-  ranking: ReturnType<typeof getRanking>
+  ranking: ReturnType<typeof getGameRanking>
   roundsPlayed: number
   okeyThrows: Record<string, number>
   okeyBurns: Record<string, number>
@@ -25,39 +28,44 @@ interface GameSummary {
 }
 
 function computeGameSummary(game: Game, rounds: Round[]): Omit<GameSummary, 'game'> {
-  const totals = calculateTotals(game.players, rounds.map((r) => r.scores))
-  const ranking = getRanking(totals)
+  const ranking = getGameRanking(game, rounds)
   const okeyThrows: Record<string, number> = {}
   const okeyBurns: Record<string, number> = {}
   let fakeOkeyRounds = 0
 
-  for (const player of game.players) {
-    okeyThrows[player] = 0
-    okeyBurns[player] = 0
-  }
-
-  for (const round of rounds) {
-    if (round.fake_okey) fakeOkeyRounds++
-
-    const winner = getLeader(
-      Object.fromEntries(
-        game.players
-          .filter((p) => (round.scores[p] ?? 0) < 0)
-          .map((p) => [p, round.scores[p]])
-      )
-    ) ?? game.players.find((p) => (round.scores[p] ?? 0) < 0)
-
-    if (winner && round.okey_thrown) {
-      okeyThrows[winner]++
-    }
+  if (isCezaliGame(game)) {
+    const cezaliSettings: CezaliGameSettings = isCezaliSettings(game.settings)
+      ? game.settings
+      : DEFAULT_SETTINGS
 
     for (const player of game.players) {
-      const score = round.scores[player] ?? 0
-      if (
-        score > 0 &&
-        detectOkeyBurnType(score, round.color, game.settings, round.fake_okey ?? false)
-      ) {
-        okeyBurns[player]++
+      okeyThrows[player] = 0
+      okeyBurns[player] = 0
+    }
+
+    for (const round of rounds) {
+      if (round.fake_okey) fakeOkeyRounds++
+
+      const winner = getLeader(
+        Object.fromEntries(
+          game.players
+            .filter((p) => (round.scores[p] ?? 0) < 0)
+            .map((p) => [p, round.scores[p]])
+        )
+      ) ?? game.players.find((p) => (round.scores[p] ?? 0) < 0)
+
+      if (winner && round.okey_thrown) {
+        okeyThrows[winner]++
+      }
+
+      for (const player of game.players) {
+        const score = round.scores[player] ?? 0
+        if (
+          score > 0 &&
+          detectOkeyBurnType(score, round.color, cezaliSettings, round.fake_okey ?? false)
+        ) {
+          okeyBurns[player]++
+        }
       }
     }
   }
@@ -206,7 +214,15 @@ export function GameResultModal({
                           </div>
                           <p
                             className={`font-bold shrink-0 ${
-                              item.total < 0 ? 'text-green-400' : item.total > 0 ? 'text-red-400' : 'text-white'
+                              isSayiliGame(game)
+                                ? item.total <= 0
+                                  ? 'text-green-400'
+                                  : 'text-white'
+                                : item.total < 0
+                                  ? 'text-green-400'
+                                  : item.total > 0
+                                    ? 'text-red-400'
+                                    : 'text-white'
                             } ${isWinner ? 'text-xl' : 'text-base'}`}
                           >
                             {item.total}
@@ -221,6 +237,7 @@ export function GameResultModal({
                     <p className="text-[#718096] text-sm">
                       {formatGameDate(game.finished_at ?? game.created_at)}
                     </p>
+                    <p className="text-[#a0aec0] text-xs">{getGameBadgeLabel(game)}</p>
                     <p className="text-white text-sm">
                       Toplam <span className="font-semibold">{summary.roundsPlayed}</span> el oynandı
                     </p>
@@ -242,9 +259,11 @@ export function GameResultModal({
                         <span className="text-purple-400 font-semibold">{summary.fakeOkeyRounds}</span>
                       </p>
                     )}
-                    {okeyThrowEntries.length === 0 && okeyBurnEntries.length === 0 && summary.fakeOkeyRounds === 0 && (
+                    {isSayiliGame(game) ? (
+                      <p className="text-[#718096] text-sm">Sayılı okey — en düşük sayı kazanır</p>
+                    ) : okeyThrowEntries.length === 0 && okeyBurnEntries.length === 0 && summary.fakeOkeyRounds === 0 ? (
                       <p className="text-[#718096] text-sm">Özel durum kaydı yok</p>
-                    )}
+                    ) : null}
                   </div>
                 </>
               )}
