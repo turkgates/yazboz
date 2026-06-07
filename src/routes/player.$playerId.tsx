@@ -1,18 +1,32 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { supabase, fetchPlayerById, fetchPlayerGamesWithRounds } from '@/lib/supabase'
+import type { Game, SavedPlayer } from '@/types'
 import {
-  supabase,
-  fetchPlayerById,
-  fetchPlayerGamesWithRounds,
-} from '@/lib/supabase'
-import type { Game, Round, SavedPlayer } from '@/types'
-import { ArrowLeft, Pencil, Trophy, Target, TrendingDown, TrendingUp, Flame, Zap } from 'lucide-react'
+  ArrowLeft,
+  Pencil,
+  Trophy,
+  TrendingUp,
+  Flame,
+  Zap,
+  Gamepad2,
+  Percent,
+  BarChart3,
+  Layers,
+  Star,
+  Skull,
+  Medal,
+} from 'lucide-react'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerFormModal } from '@/components/players/PlayerFormModal'
-import { calculateTotals, getLeader, detectOkeyBurnType } from '@/lib/calculations'
+import {
+  computePlayerProfileStats,
+  getGameWinners,
+  getPlayerGameTotal,
+  type PlayerProfileStats,
+} from '@/lib/statsUtils'
 import { formatDate } from '@/lib/dateUtils'
-import { AnimatePresence } from 'framer-motion'
 
 export const Route = createFileRoute('/player/$playerId')({
   beforeLoad: async () => {
@@ -22,77 +36,22 @@ export const Route = createFileRoute('/player/$playerId')({
   component: PlayerProfilePage,
 })
 
-interface PlayerStats {
-  totalGames: number
-  winCount: number
-  winPercentage: number
-  averagePenalty: number
-  bestHand: number | null
-  worstHand: number | null
-  okeyThrowCount: number
-  okeyBurnCount: number
-}
-
 interface GameHistoryItem {
   game: Game
   total: number
   isWinner: boolean
-  rounds: Round[]
 }
 
-function computePlayerStats(
-  playerName: string,
-  games: Game[],
-  roundsByGame: Record<string, Round[]>
-): PlayerStats {
-  let winCount = 0
-  let totalPenalty = 0
-  let bestHand: number | null = null
-  let worstHand: number | null = null
-  let okeyThrowCount = 0
-  let okeyBurnCount = 0
-
-  for (const game of games) {
-    const rounds = roundsByGame[game.id] ?? []
-    const totals = calculateTotals(game.players, rounds.map((r) => r.scores))
-    const leader = getLeader(totals)
-    if (leader === playerName) winCount++
-    totalPenalty += totals[playerName] ?? 0
-
-    for (const round of rounds) {
-      const score = round.scores[playerName] ?? 0
-
-      if (score < 0) {
-        if (round.okey_thrown) okeyThrowCount++
-      }
-
-      if (score > 0 && detectOkeyBurnType(score, round.color)) {
-        okeyBurnCount++
-      }
-
-      if (bestHand === null || score < bestHand) bestHand = score
-      if (worstHand === null || score > worstHand) worstHand = score
-    }
-  }
-
-  const totalGames = games.length
-  return {
-    totalGames,
-    winCount,
-    winPercentage: totalGames > 0 ? Math.round((winCount / totalGames) * 100) : 0,
-    averagePenalty: totalGames > 0 ? Math.round(totalPenalty / totalGames) : 0,
-    bestHand,
-    worstHand,
-    okeyThrowCount,
-    okeyBurnCount,
-  }
+function formatScore(score: number): string {
+  if (score > 0) return `+${score}`
+  return String(score)
 }
 
 function PlayerProfilePage() {
   const { playerId } = Route.useParams()
   const navigate = useNavigate()
   const [player, setPlayer] = useState<SavedPlayer | null>(null)
-  const [stats, setStats] = useState<PlayerStats | null>(null)
+  const [stats, setStats] = useState<PlayerProfileStats | null>(null)
   const [history, setHistory] = useState<GameHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -115,17 +74,15 @@ function PlayerProfilePage() {
     setPlayer(playerData)
 
     const { games, roundsByGame } = await fetchPlayerGamesWithRounds(user.id, playerData.name)
-    setStats(computePlayerStats(playerData.name, games, roundsByGame))
+    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame))
 
-    const items: GameHistoryItem[] = games.map((game) => {
+    const items: GameHistoryItem[] = games.slice(0, 10).map((game) => {
       const rounds = roundsByGame[game.id] ?? []
-      const totals = calculateTotals(game.players, rounds.map((r) => r.scores))
-      const leader = getLeader(totals)
+      const winners = getGameWinners(game, rounds)
       return {
         game,
-        total: totals[playerData.name] ?? 0,
-        isWinner: leader === playerData.name,
-        rounds,
+        total: getPlayerGameTotal(rounds, playerData.name),
+        isWinner: winners.some((w) => w.toLowerCase() === playerData.name.toLowerCase()),
       }
     })
     setHistory(items)
@@ -170,7 +127,6 @@ function PlayerProfilePage() {
       </div>
 
       <div className="flex-1 px-4 py-6 pb-20 max-w-lg mx-auto w-full">
-        {/* Üst kısım */}
         <div className="flex flex-col items-center mb-6">
           <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={96} className="mb-3" />
           <h2 className="text-white text-xl font-bold mb-3">{player.name}</h2>
@@ -183,40 +139,47 @@ function PlayerProfilePage() {
           </button>
         </div>
 
-        {/* İstatistik kartları */}
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <StatCard icon={<Target size={18} />} label="Toplam Oyun" value={stats.totalGames.toString()} />
+          <StatCard icon={<Gamepad2 size={18} />} label="Toplam Oyun" value={String(stats.totalGames)} />
+          <StatCard icon={<Trophy size={18} />} label="Kazanma" value={String(stats.wins)} color="gold" />
+          <StatCard icon={<Percent size={18} />} label="Kazanma %" value={`%${stats.winPercentage}`} color="gold" />
           <StatCard
-            icon={<Trophy size={18} />}
-            label="Kazanma"
-            value={`${stats.winCount} (%${stats.winPercentage})`}
-            color="gold"
+            icon={<BarChart3 size={18} />}
+            label="Ort. Oyun Puanı"
+            value={formatScore(stats.averageGameScore)}
+            color={stats.averageGameScore < 0 ? 'green' : stats.averageGameScore > 0 ? 'red' : undefined}
+          />
+          <StatCard icon={<Layers size={18} />} label="Toplam El" value={String(stats.totalRounds)} />
+          <StatCard icon={<Zap size={18} />} label="Okey Atma" value={String(stats.okeyCount)} />
+          <StatCard icon={<Flame size={18} />} label="Okey Yakma" value={String(stats.burnedCount)} />
+          <StatCard
+            icon={<Star size={18} />}
+            label="En İyi El"
+            value={stats.bestRound !== null ? formatScore(stats.bestRound) : '—'}
+            color="green"
           />
           <StatCard
-            icon={<TrendingUp size={18} />}
-            label="Ort. Ceza"
-            value={stats.averagePenalty > 0 ? `+${stats.averagePenalty}` : String(stats.averagePenalty)}
+            icon={<Skull size={18} />}
+            label="En Kötü El"
+            value={stats.worstRound !== null ? formatScore(stats.worstRound) : '—'}
             color="red"
           />
           <StatCard
-            icon={<TrendingDown size={18} />}
-            label="En İyi El"
-            value={stats.bestHand !== null ? String(stats.bestHand) : '—'}
+            icon={<Medal size={18} />}
+            label="En İyi Oyun"
+            value={stats.bestGame !== null ? formatScore(stats.bestGame) : '—'}
             color="green"
           />
           <StatCard
             icon={<TrendingUp size={18} />}
-            label="En Kötü El"
-            value={stats.worstHand !== null ? `+${stats.worstHand}` : '—'}
+            label="En Kötü Oyun"
+            value={stats.worstGame !== null ? formatScore(stats.worstGame) : '—'}
             color="red"
           />
-          <StatCard icon={<Zap size={18} />} label="Okey Atma" value={stats.okeyThrowCount.toString()} />
-          <StatCard icon={<Flame size={18} />} label="Okeyi Yakma" value={stats.okeyBurnCount.toString()} />
         </div>
 
-        {/* Son oyunlar */}
         <h3 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-          Son Oyunlar
+          Son 10 Oyun
         </h3>
 
         {history.length === 0 ? (
@@ -232,28 +195,30 @@ function PlayerProfilePage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
                 onClick={() =>
-                  navigate({
-                    to: item.game.status === 'finished' ? '/game-over/$gameId' : '/game/$gameId',
-                    params: { gameId: item.game.id },
-                  })
+                  navigate({ to: '/game/$gameId', params: { gameId: item.game.id } })
                 }
-                className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors"
+                className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors w-full"
               >
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-white text-sm font-medium">
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      item.isWinner
+                        ? 'bg-[#f5a623]/20 text-[#f5a623]'
+                        : 'bg-[#2d3748] text-[#718096]'
+                    }`}
+                  >
                     {item.isWinner ? '🏆 Kazandı' : 'Kaybetti'}
+                  </span>
+                  <p className="text-[#718096] text-xs">
+                    {formatDate(item.game.finished_at ?? item.game.created_at)}
                   </p>
-                  <p className="text-[#718096] text-xs">{formatDate(item.game.created_at)}</p>
                 </div>
-                <p className="text-[#718096] text-xs mb-1">
-                  {item.game.players.join(', ')}
-                </p>
                 <p
                   className={`text-sm font-bold ${
                     item.total < 0 ? 'text-green-400' : item.total > 0 ? 'text-red-400' : 'text-white'
                   }`}
                 >
-                  Toplam: {item.total > 0 ? `+${item.total}` : item.total}
+                  Toplam: {formatScore(item.total)}
                 </p>
               </motion.button>
             ))}

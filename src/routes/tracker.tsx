@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { OkeyTile, type OkeyTileColor } from '@/components/OkeyTile'
 
 export const Route = createFileRoute('/tracker')({
   beforeLoad: async () => {
@@ -19,19 +20,34 @@ interface TrackerData {
   red: TileState[]
   yellow: TileState[]
   green: TileState[]
-  fake: TileState[]
+  fake: TileState
 }
 
-const COLORS = [
-  { key: 'black' as const, label: 'Siyah', bg: 'bg-gray-800', border: 'border-gray-600' },
-  { key: 'red' as const, label: 'Kırmızı', bg: 'bg-red-600', border: 'border-red-400' },
-  { key: 'yellow' as const, label: 'Sarı', bg: 'bg-yellow-500', border: 'border-yellow-300' },
-  { key: 'green' as const, label: 'Mavi/Yeşil', bg: 'bg-teal-600', border: 'border-teal-400' },
+const COLORS: {
+  key: keyof Omit<TrackerData, 'fake'>
+  tileColor: OkeyTileColor
+  icon: string
+  label: string
+}[] = [
+  { key: 'black', tileColor: 'black', icon: '⬛', label: 'Siyahlar' },
+  { key: 'red', tileColor: 'red', icon: '🔴', label: 'Kırmızılar' },
+  { key: 'yellow', tileColor: 'yellow', icon: '🟡', label: 'Sarılar' },
+  { key: 'green', tileColor: 'blue', icon: '🔵', label: 'Maviler' },
 ]
 
 function createInitialData(): TrackerData {
   const row = () => Array.from({ length: 13 }, () => 0 as TileState)
-  return { black: row(), red: row(), yellow: row(), green: row(), fake: [0, 0] }
+  return { black: row(), red: row(), yellow: row(), green: row(), fake: 0 }
+}
+
+function migrateFakeState(val: unknown): TileState {
+  if (typeof val === 'number' && val >= 0 && val <= 2) return val as TileState
+  if (Array.isArray(val)) {
+    const arr = val as TileState[]
+    if (arr.some((s) => s >= 2)) return 2
+    if (arr.some((s) => s >= 1)) return 1
+  }
+  return 0
 }
 
 function migrateData(raw: unknown): TrackerData {
@@ -53,10 +69,7 @@ function migrateData(raw: unknown): TrackerData {
     }
   }
 
-  if (Array.isArray(data.fake) && data.fake.length === 2) {
-    result.fake = data.fake as TileState[]
-  }
-
+  result.fake = migrateFakeState(data.fake)
   return result
 }
 
@@ -76,8 +89,25 @@ function nextState(current: TileState): TileState {
   return ((current + 1) % 3) as TileState
 }
 
+function useLandscape() {
+  const [isLandscape, setIsLandscape] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)')
+    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  return isLandscape
+}
+
 function TrackerPage() {
   const [data, setData] = useState<TrackerData>(createInitialData)
+  const isLandscape = useLandscape()
+  const tileSize = isLandscape ? 'small' : 'normal'
 
   useEffect(() => {
     setData(loadData())
@@ -94,10 +124,8 @@ function TrackerPage() {
     update(next)
   }
 
-  const cycleFake = (index: number) => {
-    const next = { ...data, fake: [...data.fake] as TileState[] }
-    next.fake[index] = nextState(next.fake[index])
-    update(next)
+  const cycleFake = () => {
+    update({ ...data, fake: nextState(data.fake) })
   }
 
   const handleReset = () => {
@@ -120,30 +148,21 @@ function TrackerPage() {
         </div>
       </div>
 
-      <div className="tracker-content flex-1 px-4 py-4 max-w-full mx-auto w-full space-y-6 overflow-y-auto overflow-x-hidden">
-        {COLORS.map(({ key, label, bg, border }) => (
-          <section key={key} className="tracker-section overflow-x-hidden">
-            <h2
-              className={`tracker-section-title text-sm font-bold mb-3 ${
-                label === 'Siyah'
-                  ? 'text-gray-300'
-                  : label === 'Kırmızı'
-                    ? 'text-red-400'
-                    : label === 'Sarı'
-                      ? 'text-yellow-400'
-                      : 'text-teal-400'
-              }`}
-            >
+      <div className="tracker-content flex-1 px-4 py-4 max-w-full mx-auto w-full overflow-y-auto overflow-x-hidden">
+        {COLORS.map(({ key, tileColor, icon, label }) => (
+          <section key={key} className="tracker-section">
+            <h2 className="tracker-section-title">
+              <span className="tracker-section-icon">{icon}</span>
               {label}
             </h2>
             <div className="tile-grid">
               {Array.from({ length: 13 }, (_, num) => (
-                <TileButton
+                <OkeyTile
                   key={num}
-                  value={num + 1}
-                  state={data[key][num]}
-                  bg={bg}
-                  border={border}
+                  number={num + 1}
+                  color={tileColor}
+                  status={data[key][num]}
+                  size={tileSize}
                   onClick={() => cycleTile(key, num)}
                 />
               ))}
@@ -151,50 +170,21 @@ function TrackerPage() {
           </section>
         ))}
 
-        <section className="tracker-section overflow-x-hidden">
-          <h2 className="tracker-section-title text-sm font-bold mb-3 text-purple-400">Sahte Okey</h2>
-          <div className="tile-grid">
-            {data.fake.map((state, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => cycleFake(i)}
-                className={`tile-btn tile-button rounded-lg border-2 border-purple-400 bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold transition-all ${
-                  state === 0 ? '' : state === 1 ? 'tile-btn--state-1' : 'tile-btn--state-2'
-                }`}
-              >
-                <span className="tile-num">SAHTE</span>
-              </button>
-            ))}
-          </div>
+        <section className="tracker-section tracker-section--fake">
+          <h2 className="tracker-section-title">
+            <span className="tracker-section-icon">★</span>
+            Sahte Okey
+          </h2>
+          <OkeyTile
+            number={0}
+            color="black"
+            status={data.fake}
+            size={tileSize}
+            isFakeOkey
+            onClick={cycleFake}
+          />
         </section>
       </div>
     </div>
-  )
-}
-
-function TileButton({
-  value,
-  state,
-  bg,
-  border,
-  onClick,
-}: {
-  value: number
-  state: TileState
-  bg: string
-  border: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`tile-btn tile-button rounded-lg border-2 ${bg} ${border} flex items-center justify-center text-white text-sm font-bold transition-all ${
-        state === 0 ? '' : state === 1 ? 'tile-btn--state-1' : 'tile-btn--state-2'
-      }`}
-    >
-      <span className="tile-num">{value}</span>
-    </button>
   )
 }

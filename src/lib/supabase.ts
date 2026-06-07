@@ -196,15 +196,19 @@ export async function fetchPlayerGamesWithRounds(userId: string, playerName: str
     .from('games')
     .select('*')
     .eq('user_id', userId)
-    .contains('players', [playerName])
+    .eq('status', 'finished')
     .order('created_at', { ascending: false })
     .returns<Game[]>()
 
-  if (gamesError || !games?.length) {
-    return { games: games ?? [], roundsByGame: {} as Record<string, Round[]>, error: gamesError }
+  const playerGames = (games ?? []).filter((g) =>
+    g.players.some((p) => p.toLowerCase() === playerName.toLowerCase())
+  )
+
+  if (gamesError || !playerGames.length) {
+    return { games: playerGames, roundsByGame: {} as Record<string, Round[]>, error: gamesError }
   }
 
-  const gameIds = games.map((g) => g.id)
+  const gameIds = playerGames.map((g) => g.id)
   const { data: rounds, error: roundsError } = await supabase
     .from('rounds')
     .select('*')
@@ -218,5 +222,5 @@ export async function fetchPlayerGamesWithRounds(userId: string, playerName: str
     roundsByGame[round.game_id].push(round)
   }
 
-  return { games, roundsByGame, error: roundsError }
+  return { games: playerGames, roundsByGame, error: roundsError }
 }
