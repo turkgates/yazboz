@@ -80,24 +80,72 @@ input[type="number"] {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.tile-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.tracker-page {
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
 }
 
-@media (orientation: landscape) {
-  .tile-grid {
-    flex-wrap: nowrap;
-  }
+.tracker-content {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
-.tile-btn {
+.tile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow-x: hidden;
+}
+
+.tile-btn,
+.tile-button {
   min-width: 44px;
   min-height: 44px;
   width: 44px;
   height: 44px;
+}
+
+@media (orientation: landscape) {
+  .tracker-page {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .tracker-content {
+    padding: 4px !important;
+    gap: 4px !important;
+  }
+
+  .tracker-header {
+    display: none;
+  }
+
+  .tracker-section {
+    padding: 4px !important;
+    margin: 0 !important;
+  }
+
+  .tracker-section-title {
+    display: none;
+  }
+
+  .tile-grid {
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+  }
+
+  .tile-btn,
+  .tile-button {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    aspect-ratio: 1 !important;
+    font-size: 11px !important;
+    padding: 2px !important;
+  }
 }
 
 .tile-btn--state-1 {

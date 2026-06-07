@@ -37,15 +37,17 @@ export function useOfflineSync() {
       })
 
       for (const round of rounds) {
-        await insertRound({
+        const { error } = await insertRound({
           id: round.id,
           game_id: round.game_id,
           round_number: round.round_number,
           color: round.color,
           okey_thrown: round.okey_thrown,
           double_finish: round.double_finish,
+          fake_okey: round.fake_okey ?? false,
           scores: round.scores,
         })
+        if (error) throw error
       }
 
       setPendingSync(false)

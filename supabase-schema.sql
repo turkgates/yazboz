@@ -140,3 +140,6 @@ create policy "Avatar güncelle"
 create policy "Avatar sil"
   on storage.objects for delete
   using (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Mevcut veritabanları için (fake_okey kolonu yoksa):
+-- alter table rounds add column if not exists fake_okey boolean default false;

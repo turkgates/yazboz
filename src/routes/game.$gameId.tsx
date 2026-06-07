@@ -35,7 +35,7 @@ function GamePage() {
     currentGame,
     rounds,
     loadGame,
-    addRound,
+    appendRound,
     updateRoundInStore,
     deleteRoundInStore,
     finishGame,
@@ -84,54 +84,63 @@ function GamePage() {
   const handleRoundSaved = async (input: RoundInput) => {
     if (!currentGame) return
 
-    if (editingRound) {
-      const scores = buildScores(input)
-      updateRoundInStore(editingRound.id, input)
-      setShowModal(false)
-      setEditingRound(null)
-
-      try {
-        await updateRound(editingRound.id, {
-          color: input.color,
-          okey_thrown: input.okeyThrown,
-          double_finish: input.doubleFinish,
-          fake_okey: input.fakeOkey ?? false,
-          scores,
-        })
-      } catch (err) {
-        console.error('Update round error:', err)
-      }
-      return
-    }
-
-    const roundId = uuidv4()
-    const roundNumber = rounds.length + 1
     const scores = buildScores(input)
 
-    addRound(roundId, roundNumber, input)
-    setShowModal(false)
-
-    try {
-      await insertRound({
-        id: roundId,
-        game_id: gameId,
-        round_number: roundNumber,
+    if (editingRound) {
+      const { error } = await updateRound(editingRound.id, {
         color: input.color,
         okey_thrown: input.okeyThrown,
         double_finish: input.doubleFinish,
         fake_okey: input.fakeOkey ?? false,
         scores,
       })
-    } catch (err) {
-      console.error('Insert round error:', err)
+
+      if (error) {
+        console.error('Round kayıt hatası:', error)
+        alert('El kaydedilemedi: ' + error.message)
+        return
+      }
+
+      updateRoundInStore(editingRound.id, input)
+      setShowModal(false)
+      setEditingRound(null)
+      return
     }
+
+    const roundNumber = rounds.length + 1
+    const roundId = uuidv4()
+
+    const { data, error } = await insertRound({
+      id: roundId,
+      game_id: gameId,
+      round_number: roundNumber,
+      color: input.color,
+      okey_thrown: input.okeyThrown,
+      double_finish: input.doubleFinish,
+      fake_okey: input.fakeOkey ?? false,
+      scores,
+    })
+
+    if (error) {
+      console.error('Round kayıt hatası:', error)
+      alert('El kaydedilemedi: ' + error.message)
+      return
+    }
+
+    if (data) {
+      appendRound(data)
+    }
+
+    setShowModal(false)
 
     if (roundNumber >= currentGame.total_rounds) {
       finishGame()
-      try {
-        await updateGame(gameId, { status: 'finished', finished_at: new Date().toISOString() })
-      } catch (err) {
-        console.error('Finish game error:', err)
+      const { error: finishError } = await updateGame(gameId, {
+        status: 'finished',
+        finished_at: new Date().toISOString(),
+      })
+      if (finishError) {
+        console.error('Finish game error:', finishError)
       }
       navigate({ to: '/game-over/$gameId', params: { gameId } })
     }

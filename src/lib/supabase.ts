@@ -86,7 +86,7 @@ export async function updateGame(gameId: string, updates: Partial<Omit<Game, 'id
 export async function insertRound(roundData: Omit<Round, 'created_at'>) {
   return supabase
     .from('rounds')
-    .upsert(roundData as Record<string, unknown>)
+    .insert(roundData as Record<string, unknown>)
     .select()
     .single<Round>()
 }

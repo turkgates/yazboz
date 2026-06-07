@@ -11,6 +11,7 @@ interface GameStore {
 
   startGame: (game: Game) => void
   addRound: (roundId: string, roundNumber: number, input: RoundInput) => void
+  appendRound: (round: Round) => void
   updateRoundInStore: (roundId: string, input: RoundInput) => void
   deleteRoundInStore: (roundId: string) => void
   finishGame: () => void
@@ -64,6 +65,10 @@ export const useGameStore = create<GameStore>()(
           created_at: new Date().toISOString(),
         }
 
+        set((s) => ({ rounds: [...s.rounds, round] }))
+      },
+
+      appendRound: (round) => {
         set((s) => ({ rounds: [...s.rounds, round] }))
       },
 

@@ -106,9 +106,9 @@ function TrackerPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[#1a1a2e] flex flex-col pb-20 overflow-x-hidden">
-      <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
-        <div className="flex items-center justify-between py-4 max-w-lg mx-auto">
+    <div className="tracker-page min-h-dvh bg-[#1a1a2e] flex flex-col pb-20 overflow-x-hidden w-full max-w-full">
+      <div className="tracker-header bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
+        <div className="flex items-center justify-between py-4 max-w-full mx-auto">
           <h1 className="text-lg font-bold text-white">Taş Takip</h1>
           <button
             type="button"
@@ -120,11 +120,11 @@ function TrackerPage() {
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-6 overflow-y-auto overflow-x-hidden">
+      <div className="tracker-content flex-1 px-4 py-4 max-w-full mx-auto w-full space-y-6 overflow-y-auto overflow-x-hidden">
         {COLORS.map(({ key, label, bg, border }) => (
-          <section key={key} className="overflow-x-hidden">
+          <section key={key} className="tracker-section overflow-x-hidden">
             <h2
-              className={`text-sm font-bold mb-3 ${
+              className={`tracker-section-title text-sm font-bold mb-3 ${
                 label === 'Siyah'
                   ? 'text-gray-300'
                   : label === 'Kırmızı'
@@ -151,15 +151,15 @@ function TrackerPage() {
           </section>
         ))}
 
-        <section className="overflow-x-hidden">
-          <h2 className="text-sm font-bold mb-3 text-purple-400">Sahte Okey</h2>
+        <section className="tracker-section overflow-x-hidden">
+          <h2 className="tracker-section-title text-sm font-bold mb-3 text-purple-400">Sahte Okey</h2>
           <div className="tile-grid">
             {data.fake.map((state, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => cycleFake(i)}
-                className={`tile-btn rounded-lg border-2 border-purple-400 bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold transition-all ${
+                className={`tile-btn tile-button rounded-lg border-2 border-purple-400 bg-purple-600 flex items-center justify-center text-white text-[10px] font-bold transition-all ${
                   state === 0 ? '' : state === 1 ? 'tile-btn--state-1' : 'tile-btn--state-2'
                 }`}
               >
@@ -190,7 +190,7 @@ function TileButton({
     <button
       type="button"
       onClick={onClick}
-      className={`tile-btn rounded-lg border-2 ${bg} ${border} flex items-center justify-center text-white text-sm font-bold transition-all ${
+      className={`tile-btn tile-button rounded-lg border-2 ${bg} ${border} flex items-center justify-center text-white text-sm font-bold transition-all ${
         state === 0 ? '' : state === 1 ? 'tile-btn--state-1' : 'tile-btn--state-2'
       }`}
     >
