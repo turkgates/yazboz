@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchPlayers, fetchProfile, fetchGamesPaginated } from '@/lib/supabase'
+import { supabase, fetchPlayers, fetchProfile } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import {
   Gamepad2,
@@ -20,6 +20,9 @@ import { BackButton } from '@/components/layout/BackButton'
 import { computeGlobalStats, type GlobalStatsSummary } from '@/lib/statsUtils'
 import { matchesGameFilter, getGameTypeLabel, type GameTypeFilter } from '@/lib/gameTypes'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
+import { TeamAvatars } from '@/components/TeamAvatars'
+import { computeEsliTeamStats } from '@/lib/teamStatsUtils'
+import { groupRoundsByGame } from '@/lib/statsUtils'
 
 export const Route = createFileRoute('/stats')({
   beforeLoad: async () => {
@@ -41,12 +44,9 @@ function StatsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
-  const [gameFilter, setGameFilter] = useState<GameTypeFilter>('all')
+  const [gameFilter, setGameFilter] = useState<GameTypeFilter>([])
   const [winnersCount, setWinnersCount] = useState(1)
-  const [listGames, setListGames] = useState<Game[]>([])
-  const [listOffset, setListOffset] = useState(0)
-  const [hasMoreList, setHasMoreList] = useState(false)
-  const [loadingMoreList, setLoadingMoreList] = useState(false)
+  const [listVisibleCount, setListVisibleCount] = useState(PAGE_SIZE)
 
   useEffect(() => {
     loadStats()
@@ -103,28 +103,18 @@ function StatsPage() {
     }
   }, [allGames, allRounds, gameFilter, winnersCount])
 
-  const loadListGames = async (uid: string, filter: GameTypeFilter, offset: number, append: boolean) => {
-    const { data } = await fetchGamesPaginated(uid, 'finished', offset, PAGE_SIZE, filter)
-    const batch = data ?? []
-    setListGames((prev) => (append ? [...prev, ...batch] : batch))
-    setListOffset(offset + PAGE_SIZE)
-    setHasMoreList(batch.length === PAGE_SIZE)
-  }
-
   useEffect(() => {
-    if (!userId) return
-    setListOffset(0)
-    loadListGames(userId, gameFilter, 0, false)
-  }, [userId, gameFilter])
-
-  const loadMoreList = async () => {
-    if (!userId || loadingMoreList) return
-    setLoadingMoreList(true)
-    await loadListGames(userId, gameFilter, listOffset, true)
-    setLoadingMoreList(false)
-  }
+    setListVisibleCount(PAGE_SIZE)
+  }, [gameFilter])
 
   const games = allGames.filter((g) => matchesGameFilter(g, gameFilter))
+  const listGames = games.slice(0, listVisibleCount)
+  const hasMoreList = listVisibleCount < games.length
+
+  const showEsliStats = gameFilter.includes('esli')
+  const esliTeamStats = showEsliStats
+    ? computeEsliTeamStats(games, groupRoundsByGame(allRounds))
+    : null
 
   const playerByName = (name: string) =>
     savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())
@@ -280,6 +270,101 @@ function StatsPage() {
               </section>
             )}
 
+            {showEsliStats && esliTeamStats && esliTeamStats.topTeams.length > 0 && (
+              <>
+                <section>
+                  <SectionTitle>🏆 En Başarılı Takımlar</SectionTitle>
+                  <div className="flex flex-col gap-2">
+                    {esliTeamStats.topTeams.slice(0, 5).map((team, i) => (
+                      <div
+                        key={team.teamKey}
+                        className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3"
+                      >
+                        <span className="text-lg w-6 shrink-0">{i < 3 ? MEDALS[i] : `${i + 1}.`}</span>
+                        <TeamAvatars
+                          players={team.players}
+                          avatarUrls={team.players.map((p) => playerByName(p)?.avatar_url ?? null)}
+                          size={36}
+                          ringColor="yellow"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-semibold truncate">{team.teamKey}</p>
+                          <p className="text-[#718096] text-xs">{team.wins} kazanma</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {(esliTeamStats.mostCompatible || esliTeamStats.leastCompatible) && (
+                  <section>
+                    <SectionTitle>Çift Uyumu</SectionTitle>
+                    <div className="bg-[#16213e] border border-[#2d3748] rounded-xl overflow-hidden divide-y divide-[#2d3748]">
+                      {esliTeamStats.mostCompatible && (
+                        <div className="p-4 flex items-center gap-3">
+                          <span className="text-xl">💑</span>
+                          <TeamAvatars
+                            players={esliTeamStats.mostCompatible.players}
+                            avatarUrls={esliTeamStats.mostCompatible.players.map((p) => playerByName(p)?.avatar_url ?? null)}
+                            size={32}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[#a0aec0] text-xs font-semibold">En Uyumlu Çift</p>
+                            <p className="text-white text-sm">{esliTeamStats.mostCompatible.teamKey}</p>
+                            <p className="text-[#f5a623] text-xs">%{esliTeamStats.mostCompatible.winRate} kazanma</p>
+                          </div>
+                        </div>
+                      )}
+                      {esliTeamStats.leastCompatible && esliTeamStats.leastCompatible.teamKey !== esliTeamStats.mostCompatible?.teamKey && (
+                        <div className="p-4 flex items-center gap-3">
+                          <span className="text-xl">💔</span>
+                          <TeamAvatars
+                            players={esliTeamStats.leastCompatible.players}
+                            avatarUrls={esliTeamStats.leastCompatible.players.map((p) => playerByName(p)?.avatar_url ?? null)}
+                            size={32}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[#a0aec0] text-xs font-semibold">En Uyumsuz Çift</p>
+                            <p className="text-white text-sm">{esliTeamStats.leastCompatible.teamKey}</p>
+                            <p className="text-[#718096] text-xs">%{esliTeamStats.leastCompatible.winRate} kazanma</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
+
+                {esliTeamStats.personalWins.length > 0 && (
+                  <section>
+                    <SectionTitle>👤 Kişisel Kazanma (Eşli)</SectionTitle>
+                    <div className="flex flex-col gap-2">
+                      {esliTeamStats.personalWins.map((p) => (
+                        <button
+                          key={p.name}
+                          type="button"
+                          onClick={() => navigateToPlayer(p.name)}
+                          className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3 text-left hover:border-[#e94560]/40 w-full"
+                        >
+                          <PlayerAvatar
+                            name={p.name}
+                            avatarUrl={playerByName(p.name)?.avatar_url}
+                            size={36}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-semibold">{p.name}</p>
+                            <p className="text-[#718096] text-xs">
+                              {p.wins} kazanma (%{p.winRate})
+                            </p>
+                          </div>
+                          <ChevronRight size={16} className="text-[#718096] shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
             {globalStats && globalStats.playerStats.length > 0 && (
               <section>
                 <SectionTitle>Oyuncu Karşılaştırma</SectionTitle>
@@ -343,11 +428,10 @@ function StatsPage() {
               {hasMoreList && (
                 <button
                   type="button"
-                  onClick={loadMoreList}
-                  disabled={loadingMoreList}
-                  className="w-full mt-3 py-3 text-[#a0aec0] hover:text-white text-sm font-semibold transition-colors disabled:opacity-50"
+                  onClick={() => setListVisibleCount((c) => c + PAGE_SIZE)}
+                  className="w-full mt-3 py-3 text-[#a0aec0] hover:text-white text-sm font-semibold transition-colors"
                 >
-                  {loadingMoreList ? 'Yükleniyor...' : 'Daha Eski →'}
+                  Daha Eski →
                 </button>
               )}
             </section>

@@ -4,12 +4,21 @@ import confetti from 'canvas-confetti'
 import { useNavigate } from '@tanstack/react-router'
 import type { CezaliGameSettings, Game, Round, SavedPlayer } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
-import { isCezaliSettings } from '@/lib/gameTypes'
+import {
+  isCezaliSettings,
+  getGameRanking,
+  getGameBadgeLabel,
+  getTeamPlayers,
+  isCezaliGame,
+  isEsliGame,
+  isSayiliGame,
+} from '@/lib/gameTypes'
+import { getSayiliStartScore } from '@/lib/teamStatsUtils'
 import { supabase, fetchPlayers } from '@/lib/supabase'
 import { detectOkeyBurnType, getLeader } from '@/lib/calculations'
-import { getGameRanking, getGameBadgeLabel, isCezaliGame, isSayiliGame } from '@/lib/gameTypes'
 import { formatGameDate } from '@/lib/dateUtils'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { TeamAvatars } from '@/components/TeamAvatars'
 
 export interface GameResultModalProps {
   gameId: string
@@ -121,7 +130,7 @@ export function GameResultModal({
   }, [isOpen, gameId])
 
   const avatarByName = (name: string) =>
-    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.avatar_url
+    savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.avatar_url ?? null
 
   const playerIdByName = (name: string) =>
     savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
@@ -134,6 +143,10 @@ export function GameResultModal({
   const okeyBurnEntries = summary
     ? Object.entries(summary.okeyBurns).filter(([, count]) => count > 0)
     : []
+
+  const isEsli = game ? isEsliGame(game) : false
+  const isSayili = game ? isSayiliGame(game) : false
+  const startScore = game && isSayili ? getSayiliStartScore(game) : 0
 
   return (
     <AnimatePresence>
@@ -168,7 +181,7 @@ export function GameResultModal({
                   <div className="flex flex-col gap-3 mb-6">
                     {summary.ranking.map((item, i) => {
                       const isWinner = i === 0
-                      const playerId = playerIdByName(item.name)
+                      const teamPlayers = isEsli ? getTeamPlayers(game, item.name) : [item.name]
 
                       return (
                         <motion.div
@@ -193,19 +206,28 @@ export function GameResultModal({
                           <span className={`font-bold shrink-0 ${isWinner ? 'text-2xl text-[#f5a623]' : 'text-lg text-[#718096]'}`}>
                             {isWinner ? '🏆' : `${item.rank}.`}
                           </span>
-                          <PlayerAvatar
-                            name={item.name}
-                            avatarUrl={avatarByName(item.name)}
-                            size={48}
-                            onClick={
-                              playerId
-                                ? () => {
-                                    onClose()
-                                    navigate({ to: '/player/$playerId', params: { playerId } })
-                                  }
-                                : undefined
-                            }
-                          />
+                          {isEsli ? (
+                            <TeamAvatars
+                              players={teamPlayers}
+                              avatarUrls={teamPlayers.map(avatarByName)}
+                              size={isWinner ? 52 : 44}
+                              ringColor={isWinner ? 'yellow' : 'white'}
+                            />
+                          ) : (
+                            <PlayerAvatar
+                              name={item.name}
+                              avatarUrl={avatarByName(item.name)}
+                              size={48}
+                              onClick={
+                                playerIdByName(item.name)
+                                  ? () => {
+                                      onClose()
+                                      navigate({ to: '/player/$playerId', params: { playerId: playerIdByName(item.name)! } })
+                                    }
+                                  : undefined
+                              }
+                            />
+                          )}
                           <div className="flex-1 min-w-0">
                             <p className={`font-semibold truncate text-white ${isWinner ? 'text-lg' : 'text-sm'}`}>
                               {item.name}
@@ -214,7 +236,7 @@ export function GameResultModal({
                           </div>
                           <p
                             className={`font-bold shrink-0 ${
-                              isSayiliGame(game)
+                              isSayili
                                 ? item.total <= 0
                                   ? 'text-green-400'
                                   : 'text-white'
@@ -225,7 +247,7 @@ export function GameResultModal({
                                     : 'text-white'
                             } ${isWinner ? 'text-xl' : 'text-base'}`}
                           >
-                            {item.total}
+                            {isSayili ? `${startScore}→${item.total}` : item.total}
                           </p>
                         </motion.div>
                       )
@@ -259,7 +281,7 @@ export function GameResultModal({
                         <span className="text-purple-400 font-semibold">{summary.fakeOkeyRounds}</span>
                       </p>
                     )}
-                    {isSayiliGame(game) ? (
+                    {isSayili ? (
                       <p className="text-[#718096] text-sm">Sayılı okey — en düşük sayı kazanır</p>
                     ) : okeyThrowEntries.length === 0 && okeyBurnEntries.length === 0 && summary.fakeOkeyRounds === 0 ? (
                       <p className="text-[#718096] text-sm">Özel durum kaydı yok</p>

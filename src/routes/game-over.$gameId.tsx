@@ -4,13 +4,21 @@ import { motion } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
-import { getGameRanking, getGameBadgeLabel, isSayiliGame } from '@/lib/gameTypes'
+import {
+  getGameRanking,
+  getGameBadgeLabel,
+  getTeamPlayers,
+  isEsliGame,
+  isSayiliGame,
+} from '@/lib/gameTypes'
+import { getSayiliStartScore } from '@/lib/teamStatsUtils'
 import { Home, RotateCcw } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
 import { v4 as uuidv4 } from 'uuid'
 import type { Game, SavedPlayer } from '@/types'
 import { formatGameDate } from '@/lib/dateUtils'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { TeamAvatars } from '@/components/TeamAvatars'
 
 export const Route = createFileRoute('/game-over/$gameId')({
   beforeLoad: async () => {
@@ -82,6 +90,8 @@ function GameOverPage() {
   const playerDataByName = (name: string) =>
     savedPlayers.find((p) => p.name.toLowerCase() === name.toLowerCase())
 
+  const avatarUrlByName = (name: string) => playerDataByName(name)?.avatar_url ?? null
+
   if (loading || !currentGame) {
     return (
       <div className="min-h-dvh bg-[#1a1a2e] flex items-center justify-center">
@@ -93,7 +103,8 @@ function GameOverPage() {
   const ranking = getGameRanking(currentGame, rounds)
   const winner = ranking[0]
   const isSayili = isSayiliGame(currentGame)
-  const scoreLabel = isSayili ? 'sayı' : 'puan'
+  const isEsli = isEsliGame(currentGame)
+  const startScore = isSayili ? getSayiliStartScore(currentGame) : 0
 
   const medals = ['🥇', '🥈', '🥉', '4️⃣']
   const rankColors = [
@@ -102,6 +113,8 @@ function GameOverPage() {
     'from-[#cd7f32]/10 border-[#cd7f32]/30',
     'from-[#2d3748]/10 border-[#2d3748]/40',
   ]
+
+  const winnerPlayers = isEsli ? getTeamPlayers(currentGame, winner.name) : [winner.name]
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col items-center px-4 py-8 pb-24 relative overflow-hidden">
@@ -119,72 +132,109 @@ function GameOverPage() {
       >
         <div className="text-7xl mb-3">🏆</div>
         <div className="flex justify-center mb-3">
-          <PlayerAvatar
-            name={winner.name}
-            avatarUrl={playerDataByName(winner.name)?.avatar_url}
-            size={64}
-            onClick={
-              playerDataByName(winner.name)?.id
-                ? () => navigate({ to: '/player/$playerId', params: { playerId: playerDataByName(winner.name)!.id } })
-                : undefined
-            }
-          />
+          {isEsli ? (
+            <TeamAvatars
+              players={winnerPlayers}
+              avatarUrls={winnerPlayers.map(avatarUrlByName)}
+              size={72}
+              ringColor="yellow"
+            />
+          ) : (
+            <PlayerAvatar
+              name={winner.name}
+              avatarUrl={avatarUrlByName(winner.name)}
+              size={64}
+              onClick={
+                playerDataByName(winner.name)?.id
+                  ? () => navigate({ to: '/player/$playerId', params: { playerId: playerDataByName(winner.name)!.id } })
+                  : undefined
+              }
+            />
+          )}
         </div>
-        <h1 className="text-3xl font-black text-white mb-1">
-          <PlayerNameLink name={winner.name} playerId={playerDataByName(winner.name)?.id} />
+        <h1 className="text-2xl font-black text-white mb-1">
+          {isEsli ? (
+            <span className="text-[#f5a623]">🏆 {winner.name}</span>
+          ) : (
+            <PlayerNameLink name={winner.name} playerId={playerDataByName(winner.name)?.id} />
+          )}
         </h1>
         <p className="text-[#f5a623] font-semibold">kazandı!</p>
         <p className="text-[#718096] text-sm mt-1">
-          {isSayili ? 'Kalan sayı' : 'Toplam'}: {winner.total} {scoreLabel}
+          {isSayili ? (
+            <>{startScore} → {winner.total}</>
+          ) : (
+            <>Toplam: {winner.total} puan</>
+          )}
         </p>
       </motion.div>
 
       <div className="w-full max-w-sm flex flex-col gap-3 mb-8">
-        {ranking.map((item, i) => (
-          <motion.div
-            key={item.name}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 + i * 0.1 }}
-            className={`bg-gradient-to-r ${rankColors[i]} border rounded-2xl p-4 flex items-center justify-between`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{medals[i]}</span>
-              <PlayerAvatar
-                name={item.name}
-                avatarUrl={playerDataByName(item.name)?.avatar_url}
-                size={64}
-                onClick={
-                  playerDataByName(item.name)?.id
-                    ? () => navigate({ to: '/player/$playerId', params: { playerId: playerDataByName(item.name)!.id } })
-                    : undefined
-                }
-              />
-              <div>
-                <p className="text-white font-semibold">
-                  <PlayerNameLink name={item.name} playerId={playerDataByName(item.name)?.id} />
-                </p>
-                <p className="text-[#718096] text-xs">{item.rank}. sıra</p>
+        {ranking.map((item, i) => {
+          const teamPlayers = isEsli ? getTeamPlayers(currentGame, item.name) : [item.name]
+          const isWinnerRow = i === 0
+
+          return (
+            <motion.div
+              key={item.name}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 + i * 0.1 }}
+              className={`bg-gradient-to-r ${rankColors[i]} border rounded-2xl p-4 flex items-center justify-between ${
+                isWinnerRow ? 'p-5' : ''
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-2xl shrink-0">{isWinnerRow ? '🏆' : medals[i]}</span>
+                {isEsli ? (
+                  <TeamAvatars
+                    players={teamPlayers}
+                    avatarUrls={teamPlayers.map(avatarUrlByName)}
+                    size={isWinnerRow ? 48 : 40}
+                    ringColor={isWinnerRow ? 'yellow' : 'white'}
+                  />
+                ) : (
+                  <PlayerAvatar
+                    name={item.name}
+                    avatarUrl={avatarUrlByName(item.name)}
+                    size={isWinnerRow ? 56 : 48}
+                    onClick={
+                      playerDataByName(item.name)?.id
+                        ? () => navigate({ to: '/player/$playerId', params: { playerId: playerDataByName(item.name)!.id } })
+                        : undefined
+                    }
+                  />
+                )}
+                <div className="min-w-0">
+                  <p className={`text-white font-semibold truncate ${isWinnerRow ? 'text-base' : 'text-sm'}`}>
+                    {isEsli ? (
+                      <span>{item.rank}. {item.name}</span>
+                    ) : (
+                      <PlayerNameLink name={item.name} playerId={playerDataByName(item.name)?.id} />
+                    )}
+                  </p>
+                  {!isEsli && <p className="text-[#718096] text-xs">{item.rank}. sıra</p>}
+                </div>
               </div>
-            </div>
-            <div className="text-right">
-              <p
-                className={`font-bold text-lg ${
-                  isSayili
-                    ? item.total <= 0
-                      ? 'text-green-400'
-                      : 'text-white'
-                    : item.total < 0
-                      ? 'text-green-400'
-                      : 'text-red-400'
-                }`}
-              >
-                {item.total}
-              </p>
-              <p className="text-[#718096] text-xs">{scoreLabel}</p>
-            </div>
-          </motion.div>
-        ))}
+              <div className="text-right shrink-0 ml-2">
+                <p
+                  className={`font-bold ${isWinnerRow ? 'text-lg' : 'text-base'} ${
+                    isSayili
+                      ? item.total <= 0
+                        ? 'text-green-400'
+                        : 'text-white'
+                      : item.total < 0
+                        ? 'text-green-400'
+                        : 'text-red-400'
+                  }`}
+                >
+                  {isSayili ? `${startScore}→${item.total}` : item.total}
+                </p>
+                <p className="text-[#718096] text-xs">{isSayili ? 'sayı' : 'puan'}</p>
+              </div>
+            </motion.div>
+          )
+        })}
       </div>
 
       <motion.div

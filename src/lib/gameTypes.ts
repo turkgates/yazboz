@@ -1,7 +1,19 @@
 import type { Game, GameSettings, Round, SayiliOkeySettings } from '@/types'
 import { calculateTotals, getRanking } from '@/lib/calculations'
 
-export type GameTypeFilter = 'all' | 'cezali' | 'sayili'
+export type GameFilterKey = 'cezali' | 'sayili' | 'solo' | 'esli'
+export type GameTypeFilter = GameFilterKey[]
+
+export function parseTeamLabel(label: string): string[] {
+  return label.split(' & ').map((s) => s.trim()).filter(Boolean)
+}
+
+export function getTeamPlayers(game: Game, teamName: string): string[] {
+  const teams = getTeams(game)
+  const found = teams.find((t) => teamLabel(t) === teamName)
+  if (found) return found
+  return parseTeamLabel(teamName)
+}
 
 export function isCezaliSettings(settings: GameSettings): settings is import('@/types').CezaliGameSettings {
   return 'colorMultipliers' in settings && settings.colorMultipliers !== undefined
@@ -59,10 +71,29 @@ export function getGameBadgeLabel(game: Game): string {
   return getGameTypeLabel(type, subtype)
 }
 
-export function matchesGameFilter(game: Game, filter: GameTypeFilter): boolean {
-  if (filter === 'all') return true
-  if (filter === 'cezali') return isCezaliGame(game)
-  return isSayiliGame(game)
+export function matchesGameFilter(game: Game, filters: GameTypeFilter): boolean {
+  if (filters.length === 0) return true
+  if (filters.includes('cezali') && !isCezaliGame(game)) return false
+  if (filters.includes('sayili') && !isSayiliGame(game)) return false
+  if (filters.includes('esli') && !isEsliGame(game)) return false
+  if (filters.includes('solo') && isEsliGame(game)) return false
+  return true
+}
+
+export function computeCezaliTeamTotals(
+  game: Game,
+  rounds: Round[]
+): Record<string, number> {
+  const teams = getTeams(game)
+  const totals: Record<string, number> = {}
+  for (const team of teams) {
+    const label = teamLabel(team)
+    totals[label] = rounds.reduce(
+      (sum, r) => sum + (r.scores[label] ?? team.reduce((s, p) => s + (r.scores[p] ?? 0), 0)),
+      0
+    )
+  }
+  return totals
 }
 
 export const DEFAULT_SAYILI_SETTINGS: SayiliOkeySettings = {
@@ -125,8 +156,10 @@ export function getGameRanking(
   game: Game,
   rounds: Round[]
 ): Array<{ name: string; total: number; rank: number }> {
-  if (isSayiliGame(game)) {
-    const scores = computeSayiliCurrentScores(game, rounds)
+  if (isSayiliGame(game) || isCezaliEsli(game)) {
+    const scores = isSayiliGame(game)
+      ? computeSayiliCurrentScores(game, rounds)
+      : computeCezaliTeamTotals(game, rounds)
     return getSayiliRanking(scores).map((r) => ({
       name: r.name,
       total: r.score,

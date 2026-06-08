@@ -31,6 +31,8 @@ import {
 import { formatGameDate } from '@/lib/dateUtils'
 import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
+import { computePlayerEsliStats } from '@/lib/teamStatsUtils'
+import { Users } from 'lucide-react'
 
 export const Route = createFileRoute('/player/$playerId')({
   beforeLoad: async () => {
@@ -64,7 +66,8 @@ function PlayerProfilePage() {
   const [allGames, setAllGames] = useState<Game[]>([])
   const [allRoundsByGame, setAllRoundsByGame] = useState<Record<string, import('@/types').Round[]>>({})
   const [winnersCount, setWinnersCount] = useState(1)
-  const [gameFilter, setGameFilter] = useState<GameTypeFilter>('all')
+  const [gameFilter, setGameFilter] = useState<GameTypeFilter>([])
+  const [esliStats, setEsliStats] = useState<ReturnType<typeof computePlayerEsliStats>>(null)
 
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -123,6 +126,7 @@ function PlayerProfilePage() {
       }
     })
     setHistory(items)
+    setEsliStats(computePlayerEsliStats(player.name, allGames, allRoundsByGame))
   }, [player, allGames, allRoundsByGame, gameFilter, winnersCount])
 
   if (loading) {
@@ -167,6 +171,40 @@ function PlayerProfilePage() {
             Düzenle
           </button>
         </div>
+
+        {esliStats && (
+          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Users size={18} className="text-[#f5a623]" />
+              <h3 className="text-white font-semibold text-sm">Eşli Oyunlar</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-[#0f3460]/40 rounded-xl p-3">
+                <p className="text-[#718096] text-xs">Eşli Oyun</p>
+                <p className="text-white font-bold text-lg">{esliStats.totalEsliGames}</p>
+              </div>
+              <div className="bg-[#0f3460]/40 rounded-xl p-3">
+                <p className="text-[#718096] text-xs">Eşli Kazanma</p>
+                <p className="text-[#f5a623] font-bold text-lg">
+                  {esliStats.esliWins} (%{esliStats.winRate})
+                </p>
+              </div>
+            </div>
+            {esliStats.mostFrequentPartner && (
+              <p className="text-[#a0aec0] text-xs mb-1">
+                En çok eşleştiği: <span className="text-white font-medium">{esliStats.mostFrequentPartner}</span>
+              </p>
+            )}
+            {esliStats.bestPartner && (
+              <p className="text-[#a0aec0] text-xs">
+                En çok kazandığı partner:{' '}
+                <span className="text-white font-medium">
+                  {esliStats.bestPartner.name} ile {esliStats.bestPartner.wins}/{esliStats.bestPartner.total} oyun kazandı (%{esliStats.bestPartner.winRate})
+                </span>
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 mb-6">
           <StatCard icon={<Gamepad2 size={18} />} label="Toplam Oyun" value={String(stats.totalGames)} />
