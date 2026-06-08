@@ -21,7 +21,8 @@ import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { GameHeader } from '@/components/game/GameHeader'
 import { TeamScoreTable } from '@/components/game/TeamScoreTable'
 import { SayiliGameView } from '@/components/game/SayiliGameView'
-import { getTeams, isCezaliEsli, isCezaliSettings, isSayiliGame, teamLabel } from '@/lib/gameTypes'
+import { OkeyYuzbirGameView } from '@/components/game/OkeyYuzbirGameView'
+import { getTeams, isCezaliEsli, isCezaliSettings, is101Game, isSayiliGame, teamLabel } from '@/lib/gameTypes'
 import { DEFAULT_SETTINGS, type CezaliGameSettings } from '@/types'
 
 export const Route = createFileRoute('/game/$gameId')({
@@ -214,6 +215,10 @@ function GamePage() {
 
   if (isSayiliGame(currentGame)) {
     return <SayiliGameView gameId={gameId} />
+  }
+
+  if (is101Game(currentGame)) {
+    return <OkeyYuzbirGameView gameId={gameId} />
   }
 
   const isEsli = isCezaliEsli(currentGame)

@@ -2,7 +2,7 @@ export type Color = 'black' | 'red' | 'yellow' | 'green'
 
 export type GameStatus = 'active' | 'finished'
 
-export type GameType = 'cezali_okey' | 'cezali_esli' | 'sayili_okey'
+export type GameType = 'cezali_okey' | 'cezali_esli' | 'sayili_okey' | '101_okey'
 
 export type GameSubtype = 'solo' | 'esli'
 
@@ -37,7 +37,12 @@ export interface SayiliOkeySettings {
   note?: string
 }
 
-export type GameSettings = CezaliGameSettings | SayiliOkeySettings
+export interface OkeyYuzbirSettings {
+  katlamali: boolean
+  defaultRounds: number
+}
+
+export type GameSettings = CezaliGameSettings | SayiliOkeySettings | OkeyYuzbirSettings
 
 export const DEFAULT_SETTINGS: CezaliGameSettings = {
   colorMultipliers: {
@@ -65,6 +70,7 @@ export interface Game {
   players: string[]
   teams?: string[][] | null
   settings: GameSettings
+  katlamali?: boolean
   created_at: string
   finished_at?: string | null
 }

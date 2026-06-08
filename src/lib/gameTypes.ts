@@ -1,7 +1,8 @@
-import type { Game, GameSettings, Round, SayiliOkeySettings } from '@/types'
+import type { Game, GameSettings, OkeyYuzbirSettings, Round, SayiliOkeySettings } from '@/types'
 import { calculateTotals, getRanking } from '@/lib/calculations'
+import { compute101Totals, get101Ranking } from '@/lib/101calculations'
 
-export type GameFilterKey = 'cezali' | 'sayili' | 'solo' | 'esli'
+export type GameFilterKey = 'cezali' | 'sayili' | '101' | 'solo' | 'esli'
 export type GameTypeFilter = GameFilterKey[]
 
 export function parseTeamLabel(label: string): string[] {
@@ -23,8 +24,21 @@ export function isSayiliSettings(settings: GameSettings): settings is SayiliOkey
   return 'startScore' in settings && settings.startScore !== undefined
 }
 
+export function is101Settings(settings: GameSettings): settings is OkeyYuzbirSettings {
+  return 'katlamali' in settings && !('startScore' in settings) && !('colorMultipliers' in settings)
+}
+
+export const DEFAULT_101_SETTINGS: OkeyYuzbirSettings = {
+  katlamali: false,
+  defaultRounds: 11,
+}
+
 export function isCezaliGame(game: Game): boolean {
   return game.game_type === 'cezali_okey' || game.game_type === 'cezali_esli'
+}
+
+export function is101Game(game: Game): boolean {
+  return game.game_type === '101_okey'
 }
 
 export function isCezaliEsli(game: Game): boolean {
@@ -38,7 +52,10 @@ export function getGameTypeLabel(
   type: Game['game_type'],
   subtype: Game['game_subtype'] = 'solo'
 ): string {
-  const typeLabel = type === 'sayili_okey' ? 'Sayılı Okey' : 'Cezalı Okey'
+  let typeLabel: string
+  if (type === 'sayili_okey') typeLabel = 'Sayılı Okey'
+  else if (type === '101_okey') typeLabel = '101 Okey'
+  else typeLabel = 'Cezalı Okey'
   const subtypeLabel = subtype === 'esli' ? 'Eşli' : 'Tekli'
   return `${typeLabel} • ${subtypeLabel}`
 }
@@ -53,7 +70,10 @@ export function isEsliGame(game: Game): boolean {
 
 export function getTeams(game: Game): string[][] {
   if (game.teams && game.teams.length > 0) return game.teams
-  if (isCezaliEsli(game) || (game.game_type === 'sayili_okey' && game.game_subtype === 'esli')) {
+  if (
+    isCezaliEsli(game) ||
+    ((game.game_type === 'sayili_okey' || game.game_type === '101_okey') && game.game_subtype === 'esli')
+  ) {
     if (game.players.length === 4) {
       return [[game.players[0], game.players[1]], [game.players[2], game.players[3]]]
     }
@@ -75,6 +95,7 @@ export function matchesGameFilter(game: Game, filters: GameTypeFilter): boolean 
   if (filters.length === 0) return true
   if (filters.includes('cezali') && !isCezaliGame(game)) return false
   if (filters.includes('sayili') && !isSayiliGame(game)) return false
+  if (filters.includes('101') && !is101Game(game)) return false
   if (filters.includes('esli') && !isEsliGame(game)) return false
   if (filters.includes('solo') && isEsliGame(game)) return false
   return true
@@ -156,6 +177,11 @@ export function getGameRanking(
   game: Game,
   rounds: Round[]
 ): Array<{ name: string; total: number; rank: number }> {
+  if (is101Game(game)) {
+    const keys = isEsliGame(game) ? getTeams(game).map(teamLabel) : game.players
+    const totals = compute101Totals(keys, rounds.map((r) => r.scores))
+    return get101Ranking(totals)
+  }
   if (isSayiliGame(game) || isCezaliEsli(game)) {
     const scores = isSayiliGame(game)
       ? computeSayiliCurrentScores(game, rounds)

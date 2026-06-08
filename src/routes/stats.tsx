@@ -17,8 +17,8 @@ import { formatGameDate } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
-import { computeGlobalStats, type GlobalStatsSummary } from '@/lib/statsUtils'
-import { matchesGameFilter, getGameTypeLabel, type GameTypeFilter } from '@/lib/gameTypes'
+import { computeGlobalStats, computeGlobal101Stats, type GlobalStatsSummary } from '@/lib/statsUtils'
+import { matchesGameFilter, getGameTypeLabel, is101Game, type GameTypeFilter } from '@/lib/gameTypes'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 import { TeamAvatars } from '@/components/TeamAvatars'
 import { computeEsliTeamStats } from '@/lib/teamStatsUtils'
@@ -114,6 +114,11 @@ function StatsPage() {
   const showEsliStats = gameFilter.includes('esli')
   const esliTeamStats = showEsliStats
     ? computeEsliTeamStats(games, groupRoundsByGame(allRounds))
+    : null
+
+  const show101Stats = games.some((g) => is101Game(g))
+  const stats101 = show101Stats
+    ? computeGlobal101Stats(games, groupRoundsByGame(allRounds))
     : null
 
   const playerByName = (name: string) =>
@@ -363,6 +368,42 @@ function StatsPage() {
                   </section>
                 )}
               </>
+            )}
+
+            {show101Stats && stats101 && (
+              <section>
+                <SectionTitle>💯 101 Okey Rekorları</SectionTitle>
+                <div className="bg-[#16213e] border border-[#2d3748] rounded-xl overflow-hidden divide-y divide-[#2d3748]">
+                  {stats101.mostElden && (
+                    <RecordRow
+                      icon={<Zap size={18} />}
+                      title="En Fazla Elden Biten"
+                      value={`${stats101.mostElden.player} — ${stats101.mostElden.count} kez`}
+                    />
+                  )}
+                  {stats101.most303 && (
+                    <RecordRow
+                      icon={<Skull size={18} />}
+                      title="En Fazla -303 (Elden + Okey)"
+                      value={`${stats101.most303.player} — ${stats101.most303.count} kez`}
+                    />
+                  )}
+                  {stats101.highestRound && (
+                    <RecordRow
+                      icon={<Flame size={18} />}
+                      title="En Yüksek Tek El (ceza)"
+                      value={`${stats101.highestRound.player} — +${stats101.highestRound.score} (${formatGameDate(stats101.highestRound.date)})`}
+                    />
+                  )}
+                  {stats101.lowestRound && (
+                    <RecordRow
+                      icon={<Star size={18} />}
+                      title="En Düşük Tek El (bitiş)"
+                      value={`${stats101.lowestRound.player} — ${stats101.lowestRound.score} (${formatGameDate(stats101.lowestRound.date)})`}
+                    />
+                  )}
+                </div>
+              </section>
             )}
 
             {globalStats && globalStats.playerStats.length > 0 && (

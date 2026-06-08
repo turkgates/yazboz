@@ -8,6 +8,7 @@ import {
   getGameRanking,
   getGameBadgeLabel,
   getTeamPlayers,
+  is101Game,
   isEsliGame,
   isSayiliGame,
 } from '@/lib/gameTypes'
@@ -77,7 +78,7 @@ function GameOverPage() {
       total_rounds: currentGame.total_rounds,
       players: currentGame.players,
       teams: currentGame.teams,
-      settings: isSayiliGame(currentGame) ? currentGame.settings : settings,
+      settings: (isSayiliGame(currentGame) || is101Game(currentGame)) ? currentGame.settings : settings,
       created_at: new Date().toISOString(),
       finished_at: null,
     }
@@ -103,6 +104,7 @@ function GameOverPage() {
   const ranking = getGameRanking(currentGame, rounds)
   const winner = ranking[0]
   const isSayili = isSayiliGame(currentGame)
+  const is101 = is101Game(currentGame)
   const isEsli = isEsliGame(currentGame)
   const startScore = isSayili ? getSayiliStartScore(currentGame) : 0
 
@@ -160,9 +162,11 @@ function GameOverPage() {
           )}
         </h1>
         <p className="text-[#f5a623] font-semibold">kazandı!</p>
-        <p className="text-[#718096] text-sm mt-1">
+        <p className={`text-sm mt-1 font-semibold ${is101 && winner.total < 0 ? 'text-green-400' : 'text-[#718096]'}`}>
           {isSayili ? (
             <>{startScore} → {winner.total}</>
+          ) : is101 ? (
+            <>{winner.total > 0 ? `+${winner.total}` : winner.total} puan ile kazandı 🏆</>
           ) : (
             <>Toplam: {winner.total} puan</>
           )}
@@ -223,12 +227,22 @@ function GameOverPage() {
                       ? item.total <= 0
                         ? 'text-green-400'
                         : 'text-white'
-                      : item.total < 0
-                        ? 'text-green-400'
-                        : 'text-red-400'
+                      : is101
+                        ? item.total < 0
+                          ? 'text-green-400'
+                          : item.total === 0
+                            ? 'text-[#718096]'
+                            : 'text-red-400'
+                        : item.total < 0
+                          ? 'text-green-400'
+                          : 'text-red-400'
                   }`}
                 >
-                  {isSayili ? `${startScore}→${item.total}` : item.total}
+                  {isSayili
+                    ? `${startScore}→${item.total}`
+                    : is101
+                      ? item.total > 0 ? `+${item.total}` : item.total
+                      : item.total}
                 </p>
                 <p className="text-[#718096] text-xs">{isSayili ? 'sayı' : 'puan'}</p>
               </div>

@@ -1,7 +1,8 @@
 import type { CezaliGameSettings, Game, Round } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import { detectOkeyBurnType, getGameWinners, getLeader, getPlayerRank } from '@/lib/calculations'
-import { isCezaliSettings } from '@/lib/gameTypes'
+import { is101Game, isCezaliSettings, isEsliGame, getTeams, teamLabel, getGameRanking } from '@/lib/gameTypes'
+import { OKEY_YUZBIR_FINISH_SCORES } from '@/lib/101calculations'
 
 export function getScoreForPlayer(scores: Record<string, number>, playerName: string): number {
   if (playerName in scores) return scores[playerName] ?? 0
@@ -303,4 +304,121 @@ export function getRankEmoji(rank: number): string {
   if (rank === 2) return '🥈'
   if (rank === 3) return '🥉'
   return `${rank}.`
+}
+
+export interface OkeyYuzbir101Stats {
+  totalGames: number
+  wins: number
+  avgRoundScore: number
+  eldenCount: number
+  eldenOkeyCount: number
+  mostNeg303: number
+}
+
+export function computePlayer101Stats(
+  playerName: string,
+  games: Game[],
+  roundsByGame: Record<string, Round[]>
+): OkeyYuzbir101Stats {
+  const games101 = games.filter((g) => is101Game(g))
+  let wins = 0
+  let roundScoreTotal = 0
+  let roundCount = 0
+  let eldenCount = 0
+  let eldenOkeyCount = 0
+  let mostNeg303 = 0
+
+  for (const game of games101) {
+    const gameRounds = roundsByGame[game.id] ?? []
+    const esli = isEsliGame(game)
+
+    const getEntityName = (): string => {
+      if (!esli) return playerName
+      const teams = getTeams(game)
+      const team = teams.find((t) => t.some((p) => p.toLowerCase() === playerName.toLowerCase()))
+      return team ? teamLabel(team) : playerName
+    }
+
+    const entityName = getEntityName()
+    const ranking = getGameRanking(game, gameRounds)
+    const rank1 = ranking[0]
+    if (rank1 && rank1.name.toLowerCase() === entityName.toLowerCase()) wins++
+
+    for (const round of gameRounds) {
+      const score = round.scores[entityName] ?? 0
+      if (score === 0) continue
+      roundScoreTotal += score
+      roundCount++
+      if (score === OKEY_YUZBIR_FINISH_SCORES.elden) eldenCount++
+      if (score === OKEY_YUZBIR_FINISH_SCORES.elden_okey) {
+        eldenCount++
+        eldenOkeyCount++
+        mostNeg303++
+      }
+    }
+  }
+
+  return {
+    totalGames: games101.length,
+    wins,
+    avgRoundScore: roundCount > 0 ? Math.round(roundScoreTotal / roundCount) : 0,
+    eldenCount,
+    eldenOkeyCount,
+    mostNeg303,
+  }
+}
+
+export interface Global101Stats {
+  mostElden: { player: string; count: number } | null
+  most303: { player: string; count: number } | null
+  highestRound: { player: string; score: number; date: string } | null
+  lowestRound: { player: string; score: number; date: string } | null
+}
+
+export function computeGlobal101Stats(
+  games: Game[],
+  roundsByGame: Record<string, Round[]>
+): Global101Stats {
+  const games101 = games.filter((g) => is101Game(g))
+
+  const eldenCounts: Record<string, number> = {}
+  const neg303Counts: Record<string, number> = {}
+  let highestRound: { player: string; score: number; date: string } | null = null
+  let lowestRound: { player: string; score: number; date: string } | null = null
+
+  for (const game of games101) {
+    const gameRounds = roundsByGame[game.id] ?? []
+    for (const round of gameRounds) {
+      for (const [player, score] of Object.entries(round.scores)) {
+        if (player === '__maxOpen__') continue
+        if (score === OKEY_YUZBIR_FINISH_SCORES.elden || score === OKEY_YUZBIR_FINISH_SCORES.okey_ile) {
+          eldenCounts[player] = (eldenCounts[player] ?? 0) + 1
+        }
+        if (score === OKEY_YUZBIR_FINISH_SCORES.elden_okey) {
+          eldenCounts[player] = (eldenCounts[player] ?? 0) + 1
+          neg303Counts[player] = (neg303Counts[player] ?? 0) + 1
+        }
+        if (score < 0) {
+          if (lowestRound === null || score < lowestRound.score) {
+            lowestRound = { player, score, date: round.created_at }
+          }
+        }
+        if (score > 0) {
+          if (highestRound === null || score > highestRound.score) {
+            highestRound = { player, score, date: round.created_at }
+          }
+        }
+      }
+    }
+  }
+
+  const topElden = Object.entries(eldenCounts).sort((a, b) => b[1] - a[1])[0]
+  const top303 = Object.entries(neg303Counts).sort((a, b) => b[1] - a[1])[0]
+
+  return {
+    mostElden: topElden ? { player: topElden[0], count: topElden[1] } : null,
+    most303: top303 ? { player: top303[0], count: top303[1] } : null,
+    highestRound,
+    lowestRound,
+  }
 }

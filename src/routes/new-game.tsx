@@ -5,9 +5,9 @@ import { supabase, createGame, searchPlayersByName, createPlayer } from '@/lib/s
 import { useSettingsStore, useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, Plus, Minus, User, Play } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Game, GameSubtype, GameType, SavedPlayer, SayiliOkeySettings } from '@/types'
+import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SavedPlayer, SayiliOkeySettings } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
-import { DEFAULT_SAYILI_SETTINGS } from '@/lib/gameTypes'
+import { DEFAULT_101_SETTINGS, DEFAULT_SAYILI_SETTINGS } from '@/lib/gameTypes'
 
 export const Route = createFileRoute('/new-game')({
   beforeLoad: async () => {
@@ -17,7 +17,7 @@ export const Route = createFileRoute('/new-game')({
   component: NewGamePage,
 })
 
-type MainCategory = 'cezali' | 'sayili'
+type MainCategory = 'cezali' | 'sayili' | '101'
 
 interface PlayerSlot {
   name: string
@@ -41,6 +41,7 @@ function NewGamePage() {
   const [playerCount, setPlayerCount] = useState(4)
   const [totalRounds, setTotalRounds] = useState(cezaliSettings.defaultRounds)
   const [sayiliSettings, setSayiliSettings] = useState<SayiliOkeySettings>(DEFAULT_SAYILI_SETTINGS)
+  const [yuzbirSettings, setYuzbirSettings] = useState<OkeyYuzbirSettings>(DEFAULT_101_SETTINGS)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -89,7 +90,8 @@ function NewGamePage() {
     setError('')
 
     const gameId = uuidv4()
-    const gameType: GameType = category === 'sayili' ? 'sayili_okey' : 'cezali_okey'
+    const gameType: GameType =
+      category === 'sayili' ? 'sayili_okey' : category === '101' ? '101_okey' : 'cezali_okey'
 
     const teams = isEsli
       ? [[filledNames[0], filledNames[1]], [filledNames[2], filledNames[3]]] as string[][]
@@ -104,7 +106,12 @@ function NewGamePage() {
       total_rounds: category === 'sayili' ? 99 : totalRounds,
       players: filledNames,
       teams,
-      settings: category === 'sayili' ? sayiliSettings : cezaliSettings,
+      katlamali: category === '101' ? yuzbirSettings.katlamali : undefined,
+      settings: category === 'sayili'
+        ? sayiliSettings
+        : category === '101'
+          ? yuzbirSettings
+          : cezaliSettings,
       finished_at: null,
     }
 
@@ -185,6 +192,23 @@ function NewGamePage() {
                 </div>
               </div>
             </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('101')}
+              className={`rounded-2xl p-4 border text-left transition-all ${
+                category === '101'
+                  ? 'bg-[#e94560]/10 border-[#e94560]'
+                  : 'bg-[#16213e] border-[#2d3748]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💯</span>
+                <div>
+                  <p className="text-white font-semibold">101 Okey</p>
+                  <p className="text-[#718096] text-xs">Taş toplamlı bitiş sistemi</p>
+                </div>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -209,6 +233,38 @@ function NewGamePage() {
             ))}
           </div>
         </div>
+
+        {category === '101' && (
+          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-5 space-y-4">
+            <SettingRow label="Katlamalı">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setYuzbirSettings((s) => ({ ...s, katlamali: true }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                    yuzbirSettings.katlamali ? 'bg-[#e94560] text-white' : 'bg-[#0f3460] text-[#a0aec0]'
+                  }`}
+                >
+                  Var ✓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setYuzbirSettings((s) => ({ ...s, katlamali: false }))}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                    !yuzbirSettings.katlamali ? 'bg-[#e94560] text-white' : 'bg-[#0f3460] text-[#a0aec0]'
+                  }`}
+                >
+                  Yok
+                </button>
+              </div>
+            </SettingRow>
+            {yuzbirSettings.katlamali && (
+              <p className="text-[#718096] text-xs">
+                Her elde açılış için minimum puan bir önceki elki en yüksek açılış + 1 olur.
+              </p>
+            )}
+          </div>
+        )}
 
         {category === 'sayili' && (
           <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-5 space-y-4">
@@ -353,7 +409,7 @@ function NewGamePage() {
           </div>
         </div>
 
-        {category === 'cezali' && (
+        {(category === 'cezali' || category === '101') && (
           <div className="mb-8">
             <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
               El Sayısı

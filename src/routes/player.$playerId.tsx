@@ -23,13 +23,15 @@ import { BackButton } from '@/components/layout/BackButton'
 import { GameResultModal } from '@/components/GameResultModal'
 import {
   computePlayerProfileStats,
+  computePlayer101Stats,
   computeGameTotals,
   getPlayerGameTotal,
   getRankEmoji,
   type PlayerProfileStats,
+  type OkeyYuzbir101Stats,
 } from '@/lib/statsUtils'
 import { formatGameDate } from '@/lib/dateUtils'
-import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
+import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, is101Game, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 import { computePlayerEsliStats } from '@/lib/teamStatsUtils'
 import { Users } from 'lucide-react'
@@ -68,6 +70,7 @@ function PlayerProfilePage() {
   const [winnersCount, setWinnersCount] = useState(1)
   const [gameFilter, setGameFilter] = useState<GameTypeFilter>([])
   const [esliStats, setEsliStats] = useState<ReturnType<typeof computePlayerEsliStats>>(null)
+  const [stats101, setStats101] = useState<OkeyYuzbir101Stats | null>(null)
 
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -127,6 +130,13 @@ function PlayerProfilePage() {
     })
     setHistory(items)
     setEsliStats(computePlayerEsliStats(player.name, allGames, allRoundsByGame))
+
+    const games101 = filteredGames.filter((g) => is101Game(g))
+    if (games101.length > 0) {
+      setStats101(computePlayer101Stats(player.name, filteredGames, filteredRoundsByGame))
+    } else {
+      setStats101(null)
+    }
   }, [player, allGames, allRoundsByGame, gameFilter, winnersCount])
 
   if (loading) {
@@ -171,6 +181,41 @@ function PlayerProfilePage() {
             Düzenle
           </button>
         </div>
+
+        {stats101 && (
+          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">💯</span>
+              <h3 className="text-white font-semibold text-sm">101 Okey</h3>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Oyun</p>
+                <p className="text-white font-bold text-base">{stats101.totalGames}</p>
+              </div>
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Kazanma</p>
+                <p className="text-[#f5a623] font-bold text-base">{stats101.wins}</p>
+              </div>
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Ort. El</p>
+                <p className={`font-bold text-base ${stats101.avgRoundScore < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {stats101.avgRoundScore > 0 ? `+${stats101.avgRoundScore}` : stats101.avgRoundScore}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1 bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Elden Bitiş</p>
+                <p className="text-white font-bold">{stats101.eldenCount}</p>
+              </div>
+              <div className="flex-1 bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Elden + Okey</p>
+                <p className="text-[#f5a623] font-bold">{stats101.eldenOkeyCount}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {esliStats && (
           <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-6">
