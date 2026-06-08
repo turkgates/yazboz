@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchPlayers, fetchProfile } from '@/lib/supabase'
+import { supabase, fetchPlayers, fetchProfile, fetchGamesPaginated } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import {
   Gamepad2,
@@ -18,7 +18,7 @@ import { GameResultModal } from '@/components/GameResultModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
 import { computeGlobalStats, type GlobalStatsSummary } from '@/lib/statsUtils'
-import { matchesGameFilter, getGameBadgeLabel, type GameTypeFilter } from '@/lib/gameTypes'
+import { matchesGameFilter, getGameTypeLabel, type GameTypeFilter } from '@/lib/gameTypes'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 
 export const Route = createFileRoute('/stats')({
@@ -30,6 +30,7 @@ export const Route = createFileRoute('/stats')({
 })
 
 const MEDALS = ['🥇', '🥈', '🥉']
+const PAGE_SIZE = 5
 
 function StatsPage() {
   const navigate = useNavigate()
@@ -42,6 +43,10 @@ function StatsPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [gameFilter, setGameFilter] = useState<GameTypeFilter>('all')
   const [winnersCount, setWinnersCount] = useState(1)
+  const [listGames, setListGames] = useState<Game[]>([])
+  const [listOffset, setListOffset] = useState(0)
+  const [hasMoreList, setHasMoreList] = useState(false)
+  const [loadingMoreList, setLoadingMoreList] = useState(false)
 
   useEffect(() => {
     loadStats()
@@ -97,6 +102,27 @@ function StatsPage() {
       setGlobalStats(null)
     }
   }, [allGames, allRounds, gameFilter, winnersCount])
+
+  const loadListGames = async (uid: string, filter: GameTypeFilter, offset: number, append: boolean) => {
+    const { data } = await fetchGamesPaginated(uid, 'finished', offset, PAGE_SIZE, filter)
+    const batch = data ?? []
+    setListGames((prev) => (append ? [...prev, ...batch] : batch))
+    setListOffset(offset + PAGE_SIZE)
+    setHasMoreList(batch.length === PAGE_SIZE)
+  }
+
+  useEffect(() => {
+    if (!userId) return
+    setListOffset(0)
+    loadListGames(userId, gameFilter, 0, false)
+  }, [userId, gameFilter])
+
+  const loadMoreList = async () => {
+    if (!userId || loadingMoreList) return
+    setLoadingMoreList(true)
+    await loadListGames(userId, gameFilter, listOffset, true)
+    setLoadingMoreList(false)
+  }
 
   const games = allGames.filter((g) => matchesGameFilter(g, gameFilter))
 
@@ -288,28 +314,42 @@ function StatsPage() {
             <section>
               <SectionTitle>Son Oyunlar</SectionTitle>
               <div className="flex flex-col gap-2">
-                {games.map((game, i) => (
-                  <motion.button
-                    key={game.id}
-                    type="button"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    onClick={() => setSelectedGameId(game.id)}
-                    className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors w-full"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-white text-sm font-medium truncate">{game.players.join(', ')}</p>
-                      <p className="text-[#718096] text-xs shrink-0 ml-2">
-                        {formatGameDate(game.finished_at ?? game.created_at)}
+                {listGames.map((game, i) => {
+                  const subtype = game.game_subtype ?? (game.game_type === 'cezali_esli' ? 'esli' : 'solo')
+                  const type = game.game_type === 'cezali_esli' ? 'cezali_okey' : game.game_type
+                  return (
+                    <motion.button
+                      key={game.id}
+                      type="button"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      onClick={() => setSelectedGameId(game.id)}
+                      className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 text-left hover:border-[#e94560]/40 transition-colors w-full"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-white text-sm font-medium truncate">{game.players.join(', ')}</p>
+                        <p className="text-[#718096] text-xs shrink-0 ml-2">
+                          {formatGameDate(game.finished_at ?? game.created_at)}
+                        </p>
+                      </div>
+                      <p className="text-[#718096] text-xs">
+                        {getGameTypeLabel(type, subtype)} • {game.players.length} oyuncu
                       </p>
-                    </div>
-                    <p className="text-[#718096] text-xs">
-                      {getGameBadgeLabel(game)} • {game.players.length} oyuncu
-                    </p>
-                  </motion.button>
-                ))}
+                    </motion.button>
+                  )
+                })}
               </div>
+              {hasMoreList && (
+                <button
+                  type="button"
+                  onClick={loadMoreList}
+                  disabled={loadingMoreList}
+                  className="w-full mt-3 py-3 text-[#a0aec0] hover:text-white text-sm font-semibold transition-colors disabled:opacity-50"
+                >
+                  {loadingMoreList ? 'Yükleniyor...' : 'Daha Eski →'}
+                </button>
+              )}
             </section>
               </>
             )}

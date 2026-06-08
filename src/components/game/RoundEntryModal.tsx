@@ -41,6 +41,8 @@ export function RoundEntryModal({
 }: RoundEntryModalProps) {
   const settings: CezaliGameSettings = isCezaliSettings(game.settings) ? game.settings : DEFAULT_SETTINGS
   const isEditing = !!editingRound
+  const teamMode = teams !== undefined && teams.length > 0
+  const teamLabels = teamMode ? teams!.map(teamLabel) : []
 
   const [color, setColor] = useState<Color | null>(editingRound?.color ?? null)
   const [fakeOkey, setFakeOkey] = useState(editingRound?.fake_okey ?? false)
@@ -49,6 +51,8 @@ export function RoundEntryModal({
   const [noWinner, setNoWinner] = useState(false)
   const [playerStatuses, setPlayerStatuses] = useState<Record<string, PlayerUIStatus>>({})
   const [rawPoints, setRawPoints] = useState<Record<string, string>>({})
+  const [winnerTeam, setWinnerTeam] = useState<string | null>(null)
+  const [teamRawPoints, setTeamRawPoints] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
@@ -61,10 +65,50 @@ export function RoundEntryModal({
     setPlayerStatuses(initial)
     setRawPoints(initialRaw)
     setNoWinner(false)
-  }, [game.players])
+
+    if (teamMode) {
+      const teamPts: Record<string, string> = {}
+      for (const label of teamLabels) teamPts[label] = ''
+      setTeamRawPoints(teamPts)
+      setWinnerTeam(null)
+    }
+  }, [game.players, teamMode, teamLabels.join(',')])
 
   useEffect(() => {
     if (!editingRound) return
+
+    if (teamMode) {
+      setColor(editingRound.color)
+      setFakeOkey(editingRound.fake_okey ?? false)
+      setOkeyThrown(editingRound.okey_thrown)
+      setDoubleFinish(editingRound.double_finish)
+
+      const teamPts: Record<string, string> = {}
+      let foundWinner: string | null = null
+
+      for (const label of teamLabels) {
+        const score = editingRound.scores[label] ?? 0
+        teamPts[label] = ''
+        if (score < 0) foundWinner = label
+        else if (score > 0) {
+          const mult = editingRound.fake_okey
+            ? getFakeOkeyLoserMultiplier(editingRound.okey_thrown, editingRound.double_finish)
+            : getLoserMultiplier(
+                editingRound.color,
+                editingRound.okey_thrown,
+                editingRound.double_finish,
+                settings.colorMultipliers
+              )
+          if (mult > 0) teamPts[label] = String(Math.round(score / mult))
+        }
+      }
+
+      setTeamRawPoints(teamPts)
+      setWinnerTeam(foundWinner)
+      setNoWinner(!foundWinner && teamLabels.every((l) => (editingRound.scores[l] ?? 0) > 0))
+      return
+    }
+
     const inferred = inferRoundInputFromScores(editingRound, game.players, settings)
     setColor(editingRound.color)
     setFakeOkey(inferred.fakeOkey)
@@ -73,9 +117,11 @@ export function RoundEntryModal({
     setNoWinner(inferred.noWinner)
     setPlayerStatuses(inferred.playerStatuses)
     setRawPoints(inferred.rawPoints)
-  }, [editingRound, game.players, settings])
+  }, [editingRound, game.players, settings, teamMode, teamLabels.join(',')])
 
-  const winner = game.players.find((p) => playerStatuses[p] === 'winner') ?? null
+  const winner = teamMode
+    ? winnerTeam
+    : game.players.find((p) => playerStatuses[p] === 'winner') ?? null
 
   const currentMultiplier = fakeOkey
     ? getFakeOkeyLoserMultiplier(okeyThrown, doubleFinish)
@@ -94,9 +140,13 @@ export function RoundEntryModal({
   const handleNoWinnerToggle = (checked: boolean) => {
     setNoWinner(checked)
     if (checked) {
-      const updated: Record<string, PlayerUIStatus> = {}
-      for (const p of game.players) updated[p] = 'normal'
-      setPlayerStatuses(updated)
+      if (teamMode) {
+        setWinnerTeam(null)
+      } else {
+        const updated: Record<string, PlayerUIStatus> = {}
+        for (const p of game.players) updated[p] = 'normal'
+        setPlayerStatuses(updated)
+      }
       setOkeyThrown(false)
       setDoubleFinish(false)
     }
@@ -117,14 +167,21 @@ export function RoundEntryModal({
     })
   }
 
-  const setTeamStatus = (team: string[], status: PlayerUIStatus) => {
-    for (const player of team) setPlayerStatus(player, status)
-    if (status === 'normal') return
-    const pts = rawPoints[team[0]] ?? ''
-    if (pts) {
-      const updated = { ...rawPoints }
-      for (const p of team) updated[p] = pts
-      setRawPoints(updated)
+  const buildTeamInput = (label: string): PlayerRoundInput => {
+    if (noWinner) {
+      return {
+        playerName: label,
+        status: 'no_winner',
+        rawPoints: parseInt(teamRawPoints[label] || '0', 10) || 0,
+      }
+    }
+    if (winnerTeam === label) {
+      return { playerName: label, status: 'winner' }
+    }
+    return {
+      playerName: label,
+      status: 'loser',
+      rawPoints: parseInt(teamRawPoints[label] || '0', 10) || 0,
     }
   }
 
@@ -160,10 +217,10 @@ export function RoundEntryModal({
 
   const effectiveColor = color ?? 'black'
 
-  const getPreviewScore = (player: string): number | null => {
+  const getPreviewScore = (input: PlayerRoundInput): number | null => {
     if (!fakeOkey && !color) return null
     if (!noWinner && !winner) return null
-    return previewRoundScore(buildPlayerInput(player), effectiveColor, okeyThrown, doubleFinish, settings, fakeOkey)
+    return previewRoundScore(input, effectiveColor, okeyThrown, doubleFinish, settings, fakeOkey)
   }
 
   const showPreview = (fakeOkey || color) && (noWinner || winner)
@@ -172,13 +229,16 @@ export function RoundEntryModal({
     if (!fakeOkey && !color) return
 
     if (!noWinner && !winner) {
-      setSaveError("Biten oyuncuyu veya 'Kimse Bitmedi'yi seçin")
+      setSaveError(teamMode ? "Biten takımı veya 'Kimse Bitmedi'yi seçin" : "Biten oyuncuyu veya 'Kimse Bitmedi'yi seçin")
       return
     }
 
     setSaveError('')
 
-    const playerResults = game.players.map(buildPlayerInput)
+    const playerResults = teamMode
+      ? teamLabels.map(buildTeamInput)
+      : game.players.map(buildPlayerInput)
+
     onSave({
       color: effectiveColor,
       okeyThrown: fakeOkey ? false : okeyThrown,
@@ -217,7 +277,6 @@ export function RoundEntryModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* BÖLÜM 1 - Renk seçimi + Sahte Okey */}
           <section>
             <div className="flex items-center justify-between mb-3">
               <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider">
@@ -255,11 +314,10 @@ export function RoundEntryModal({
             </div>
           </section>
 
-          {/* BÖLÜM 2 - Özel durum */}
           {!noWinner && (
             <section>
               <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-                Özel Durum {winner ? '(Biten oyuncu)' : ''}
+                Özel Durum {winner ? `(Biten ${teamMode ? 'takım' : 'oyuncu'})` : ''}
               </p>
               <div className="flex gap-3 mb-2">
                 <label
@@ -309,7 +367,6 @@ export function RoundEntryModal({
             </section>
           )}
 
-          {/* Kimse Bitmedi toggle */}
           <section>
             <label className="flex items-center gap-3 bg-[#0f3460]/40 border border-[#2d3748] rounded-xl p-3 cursor-pointer">
               <input
@@ -322,103 +379,141 @@ export function RoundEntryModal({
             </label>
           </section>
 
-          {/* BÖLÜM 3 - Oyuncu / Takım durumları */}
           <section>
             <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-              {teams ? 'Takım Durumları' : 'Oyuncu Durumları'}
+              {teamMode ? 'Takım Durumları' : 'Oyuncu Durumları'}
             </p>
             <div className="flex flex-col gap-3">
-              {(teams ?? game.players.map((p) => [p])).map((group) => {
-                const isTeam = teams !== undefined
-                const label = isTeam ? teamLabel(group) : group[0]
-                const player = group[0]
-                const status = playerStatuses[player] ?? 'normal'
-                const isWinner = status === 'winner'
-                const isBurned = status === 'okey_burned'
-
-                return (
-                  <div
-                    key={label}
-                    className={`bg-[#0f3460]/40 border rounded-xl p-3 ${
-                      isWinner ? 'border-green-500/50' : isBurned ? 'border-orange-500/50' : 'border-[#2d3748]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">
-                        {label}
-                      </span>
-                      <div className="flex gap-1 shrink-0">
-                        {(['normal', 'okey_burned', 'winner'] as const).map((s) => {
-                          const labels = { normal: 'Normal', okey_burned: 'Okeyi Yaktı', winner: 'Bitti' }
-                          const disabled = noWinner && s !== 'normal'
-                          return (
-                            <button
-                              key={s}
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => (isTeam ? setTeamStatus(group, s) : setPlayerStatus(player, s))}
-                              className={`px-2 py-1 rounded-full text-[10px] font-semibold transition-colors ${
-                                status === s
-                                  ? s === 'winner'
-                                    ? 'bg-green-500 text-white'
-                                    : s === 'okey_burned'
-                                      ? 'bg-orange-500 text-white'
-                                      : 'bg-[#e94560] text-white'
-                                  : 'bg-[#2d3748] text-[#a0aec0]'
-                              } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-                            >
-                              {labels[s]}
-                            </button>
-                          )
-                        })}
+              {teamMode
+                ? teamLabels.map((label, i) => {
+                    const isWinner = winnerTeam === label
+                    return (
+                      <div
+                        key={label}
+                        className={`bg-[#0f3460]/40 border rounded-xl p-3 ${
+                          isWinner ? 'border-green-500/50' : 'border-[#2d3748]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">
+                            Takım {i + 1} ({label})
+                          </span>
+                          <button
+                            type="button"
+                            disabled={noWinner}
+                            onClick={() =>
+                              setWinnerTeam(winnerTeam === label ? null : label)
+                            }
+                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                              isWinner
+                                ? 'bg-green-500 text-white'
+                                : 'bg-[#2d3748] text-[#a0aec0] hover:text-white'
+                            } ${noWinner ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          >
+                            Bitti
+                          </button>
+                        </div>
+                        {!isWinner && (
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="Takımın toplam cezası"
+                            value={teamRawPoints[label] ?? ''}
+                            onChange={(e) =>
+                              setTeamRawPoints((p) => ({ ...p, [label]: e.target.value }))
+                            }
+                            className="w-full bg-[#1a1a2e] border border-[#2d3748] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-[#e94560]"
+                          />
+                        )}
                       </div>
-                    </div>
+                    )
+                  })
+                : game.players.map((player) => {
+                    const status = playerStatuses[player] ?? 'normal'
+                    const isWinner = status === 'winner'
+                    const isBurned = status === 'okey_burned'
 
-                    {status === 'normal' && (
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="Elindeki puan"
-                        value={rawPoints[player] ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setRawPoints((p) => {
-                            const next = { ...p, [player]: val }
-                            if (isTeam) for (const tp of group) next[tp] = val
-                            return next
-                          })
-                        }}
-                        className="w-full bg-[#1a1a2e] border border-[#2d3748] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-[#e94560]"
-                      />
-                    )}
+                    return (
+                      <div
+                        key={player}
+                        className={`bg-[#0f3460]/40 border rounded-xl p-3 ${
+                          isWinner ? 'border-green-500/50' : isBurned ? 'border-orange-500/50' : 'border-[#2d3748]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">
+                            {player}
+                          </span>
+                          <div className="flex gap-1 shrink-0">
+                            {(['normal', 'okey_burned', 'winner'] as const).map((s) => {
+                              const labels = { normal: 'Normal', okey_burned: 'Okeyi Yaktı', winner: 'Bitti' }
+                              const disabled = noWinner && s !== 'normal'
+                              return (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => setPlayerStatus(player, s)}
+                                  className={`px-2 py-1 rounded-full text-[10px] font-semibold transition-colors ${
+                                    status === s
+                                      ? s === 'winner'
+                                        ? 'bg-green-500 text-white'
+                                        : s === 'okey_burned'
+                                          ? 'bg-orange-500 text-white'
+                                          : 'bg-[#e94560] text-white'
+                                      : 'bg-[#2d3748] text-[#a0aec0]'
+                                  } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                >
+                                  {labels[s]}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
 
-                    {isBurned && (
-                      <p className="text-orange-400 text-xs font-medium mt-1">Okeyi Yaktı</p>
-                    )}
-                  </div>
-                )
-              })}
+                        {status === 'normal' && (
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="Elindeki puan"
+                            value={rawPoints[player] ?? ''}
+                            onChange={(e) =>
+                              setRawPoints((p) => ({ ...p, [player]: e.target.value }))
+                            }
+                            className="w-full bg-[#1a1a2e] border border-[#2d3748] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-[#e94560]"
+                          />
+                        )}
+
+                        {isBurned && (
+                          <p className="text-orange-400 text-xs font-medium mt-1">Okeyi Yaktı</p>
+                        )}
+                      </div>
+                    )
+                  })}
             </div>
             {!noWinner && (
               <p className="text-[#718096] text-xs mt-2">
-                Sadece 1 {teams ? 'takım' : 'kişi'} bitti seçilebilir.
+                Sadece 1 {teamMode ? 'takım' : 'kişi'} bitti seçilebilir.
               </p>
             )}
           </section>
 
-          {/* BÖLÜM 4 - Önizleme */}
           {showPreview && (
             <section className="bg-[#0f3460]/30 border border-[#2d3748] rounded-xl p-4">
               <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
                 Önizleme
               </p>
               <div className="flex flex-col gap-2">
-                {game.players.map((player) => {
-                  const score = getPreviewScore(player)
+                {(teamMode ? teamLabels : game.players).map((name) => {
+                  const input = teamMode ? buildTeamInput(name) : buildPlayerInput(name)
+                  const score = getPreviewScore(input)
                   if (score === null) return null
+                  const displayName = teamMode ? `${name}` : name
                   return (
-                    <div key={player} className="flex justify-between text-sm">
-                      <span className="text-white truncate mr-2">{player}</span>
+                    <div key={name} className="flex justify-between text-sm">
+                      <span className="text-white truncate mr-2">
+                        {teamMode ? `Takım (${displayName})` : displayName}
+                      </span>
                       <span
                         className={`font-bold shrink-0 ${score < 0 ? 'text-green-400' : score > 0 ? 'text-red-400' : 'text-[#718096]'}`}
                       >
@@ -436,7 +531,6 @@ export function RoundEntryModal({
           <p className="px-5 text-red-400 text-sm text-center">{saveError}</p>
         )}
 
-        {/* BÖLÜM 5 - Butonlar */}
         <div className="px-5 pb-5 flex gap-3 shrink-0 border-t border-[#2d3748] pt-4">
           <button
             type="button"

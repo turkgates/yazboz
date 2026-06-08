@@ -1,11 +1,14 @@
 import { createFileRoute, useNavigate, redirect, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchActiveGames, fetchFinishedGames, signOut } from '@/lib/supabase'
+import { supabase, fetchGamesPaginated, signOut } from '@/lib/supabase'
 import type { Game } from '@/types'
 import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Users } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
+import { getGameTypeLabel } from '@/lib/gameTypes'
+
+const PAGE_SIZE = 5
 
 export const Route = createFileRoute('/home')({
   beforeLoad: async () => {
@@ -21,8 +24,15 @@ function HomePage() {
   const navigate = useNavigate()
   const [activeGames, setActiveGames] = useState<Game[]>([])
   const [finishedGames, setFinishedGames] = useState<Game[]>([])
+  const [activeOffset, setActiveOffset] = useState(0)
+  const [finishedOffset, setFinishedOffset] = useState(0)
+  const [hasMoreActive, setHasMoreActive] = useState(false)
+  const [hasMoreFinished, setHasMoreFinished] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingMoreActive, setLoadingMoreActive] = useState(false)
+  const [loadingMoreFinished, setLoadingMoreFinished] = useState(false)
   const [userEmail, setUserEmail] = useState('')
+  const [userId, setUserId] = useState<string | null>(null)
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -33,15 +43,45 @@ function HomePage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setUserEmail(user.email ?? '')
+    setUserId(user.id)
 
     const [activeRes, finishedRes] = await Promise.all([
-      fetchActiveGames(user.id),
-      fetchFinishedGames(user.id),
+      fetchGamesPaginated(user.id, 'active', 0, PAGE_SIZE),
+      fetchGamesPaginated(user.id, 'finished', 0, PAGE_SIZE),
     ])
 
-    setActiveGames(activeRes.data ?? [])
-    setFinishedGames(finishedRes.data ?? [])
+    const active = activeRes.data ?? []
+    const finished = finishedRes.data ?? []
+
+    setActiveGames(active)
+    setFinishedGames(finished)
+    setActiveOffset(PAGE_SIZE)
+    setFinishedOffset(PAGE_SIZE)
+    setHasMoreActive(active.length === PAGE_SIZE)
+    setHasMoreFinished(finished.length === PAGE_SIZE)
     setLoading(false)
+  }
+
+  const loadMoreActive = async () => {
+    if (!userId || loadingMoreActive) return
+    setLoadingMoreActive(true)
+    const { data } = await fetchGamesPaginated(userId, 'active', activeOffset, PAGE_SIZE)
+    const batch = data ?? []
+    setActiveGames((prev) => [...prev, ...batch])
+    setActiveOffset((prev) => prev + PAGE_SIZE)
+    setHasMoreActive(batch.length === PAGE_SIZE)
+    setLoadingMoreActive(false)
+  }
+
+  const loadMoreFinished = async () => {
+    if (!userId || loadingMoreFinished) return
+    setLoadingMoreFinished(true)
+    const { data } = await fetchGamesPaginated(userId, 'finished', finishedOffset, PAGE_SIZE)
+    const batch = data ?? []
+    setFinishedGames((prev) => [...prev, ...batch])
+    setFinishedOffset((prev) => prev + PAGE_SIZE)
+    setHasMoreFinished(batch.length === PAGE_SIZE)
+    setLoadingMoreFinished(false)
   }
 
   const handleSignOut = async () => {
@@ -132,6 +172,16 @@ function HomePage() {
                     </motion.div>
                   ))}
                 </div>
+                {hasMoreActive && (
+                  <button
+                    type="button"
+                    onClick={loadMoreActive}
+                    disabled={loadingMoreActive}
+                    className="w-full mt-3 py-3 text-[#a0aec0] hover:text-white text-sm font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {loadingMoreActive ? 'Yükleniyor...' : 'Daha Eski →'}
+                  </button>
+                )}
               </section>
             )}
 
@@ -142,7 +192,7 @@ function HomePage() {
                   Tamamlanan Oyunlar ({finishedGames.length})
                 </h2>
                 <div className="flex flex-col gap-2">
-                  {finishedGames.slice(0, 5).map((game, i) => (
+                  {finishedGames.map((game, i) => (
                     <motion.div
                       key={game.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -153,6 +203,16 @@ function HomePage() {
                     </motion.div>
                   ))}
                 </div>
+                {hasMoreFinished && (
+                  <button
+                    type="button"
+                    onClick={loadMoreFinished}
+                    disabled={loadingMoreFinished}
+                    className="w-full mt-3 py-3 text-[#a0aec0] hover:text-white text-sm font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {loadingMoreFinished ? 'Yükleniyor...' : 'Daha Eski →'}
+                  </button>
+                )}
               </section>
             )}
 
@@ -190,6 +250,8 @@ function GameCard({
   onFinishedClick?: (gameId: string) => void
 }) {
   const navigate = useNavigate()
+  const subtype = game.game_subtype ?? (game.game_type === 'cezali_esli' ? 'esli' : 'solo')
+  const type = game.game_type === 'cezali_esli' ? 'cezali_okey' : game.game_type
 
   const handleClick = () => {
     if (isActive) {
@@ -214,7 +276,7 @@ function GameCard({
           </p>
         </div>
         <p className="text-[#718096] text-xs">
-          {game.players.length} oyuncu • {game.total_rounds} el •{' '}
+          {getGameTypeLabel(type, subtype)} • {game.players.length} oyuncu •{' '}
           {formatDistanceToNow(game.created_at)}
         </p>
       </div>

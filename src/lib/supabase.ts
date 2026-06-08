@@ -54,6 +54,32 @@ export async function fetchFinishedGames(userId: string) {
     .returns<Game[]>()
 }
 
+export async function fetchGamesPaginated(
+  userId: string,
+  status: 'active' | 'finished',
+  offset: number,
+  pageSize: number,
+  gameFilter?: 'all' | 'cezali' | 'sayili'
+) {
+  const orderCol = status === 'finished' ? 'finished_at' : 'created_at'
+  let query = supabase
+    .from('games')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', status)
+
+  if (gameFilter === 'cezali') {
+    query = query.in('game_type', ['cezali_okey', 'cezali_esli'])
+  } else if (gameFilter === 'sayili') {
+    query = query.eq('game_type', 'sayili_okey')
+  }
+
+  return query
+    .order(orderCol, { ascending: false })
+    .range(offset, offset + pageSize - 1)
+    .returns<Game[]>()
+}
+
 export async function fetchGameWithRounds(gameId: string) {
   const [gameResult, roundsResult] = await Promise.all([
     supabase.from('games').select('*').eq('id', gameId).single<Game>(),

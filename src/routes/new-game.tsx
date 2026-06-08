@@ -89,12 +89,7 @@ function NewGamePage() {
     setError('')
 
     const gameId = uuidv4()
-    let gameType: GameType
-    if (category === 'cezali') {
-      gameType = isEsli ? 'cezali_esli' : 'cezali_okey'
-    } else {
-      gameType = 'sayili_okey'
-    }
+    const gameType: GameType = category === 'sayili' ? 'sayili_okey' : 'cezali_okey'
 
     const teams = isEsli
       ? [[filledNames[0], filledNames[1]], [filledNames[2], filledNames[3]]] as string[][]
@@ -130,10 +125,8 @@ function NewGamePage() {
     setLoading(false)
   }
 
-  const subtypeLabel = (cat: MainCategory, sub: GameSubtype) => {
-    if (cat === 'cezali') return sub === 'solo' ? 'Herkes Tek' : 'Eşli'
-    return sub === 'solo' ? 'Tekli' : 'Eşli'
-  }
+  const subtypeLabel = (_cat: MainCategory, sub: GameSubtype) =>
+    sub === 'esli' ? 'Eşli' : 'Tekli'
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">

@@ -21,7 +21,7 @@ import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { GameHeader } from '@/components/game/GameHeader'
 import { TeamScoreTable } from '@/components/game/TeamScoreTable'
 import { SayiliGameView } from '@/components/game/SayiliGameView'
-import { getTeams, isCezaliSettings, isSayiliGame, teamLabel } from '@/lib/gameTypes'
+import { getTeams, isCezaliEsli, isCezaliSettings, isSayiliGame, teamLabel } from '@/lib/gameTypes'
 import { DEFAULT_SETTINGS, type CezaliGameSettings } from '@/types'
 
 export const Route = createFileRoute('/game/$gameId')({
@@ -216,21 +216,23 @@ function GamePage() {
     return <SayiliGameView gameId={gameId} />
   }
 
-  const isEsli = currentGame.game_type === 'cezali_esli'
+  const isEsli = isCezaliEsli(currentGame)
   const teams = isEsli ? getTeams(currentGame) : []
   const isFinished = currentGame.status === 'finished'
   const gameOver = isGameFinished()
   const currentRound = rounds.length + 1
-  const totals: Record<string, number> = {}
-  for (const player of currentGame.players) {
-    totals[player] = rounds.reduce((sum, r) => sum + (r.scores[player] ?? 0), 0)
-  }
 
   const teamTotals: Record<string, number> = {}
   if (isEsli) {
     for (const team of teams) {
-      teamTotals[teamLabel(team)] = team.reduce((sum, p) => sum + (totals[p] ?? 0), 0)
+      const label = teamLabel(team)
+      teamTotals[label] = rounds.reduce((sum, r) => sum + (r.scores[label] ?? 0), 0)
     }
+  }
+
+  const totals: Record<string, number> = {}
+  for (const player of currentGame.players) {
+    totals[player] = rounds.reduce((sum, r) => sum + (r.scores[player] ?? 0), 0)
   }
 
   return (

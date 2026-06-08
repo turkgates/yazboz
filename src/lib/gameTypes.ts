@@ -15,6 +15,22 @@ export function isCezaliGame(game: Game): boolean {
   return game.game_type === 'cezali_okey' || game.game_type === 'cezali_esli'
 }
 
+export function isCezaliEsli(game: Game): boolean {
+  return (
+    (game.game_type === 'cezali_okey' && game.game_subtype === 'esli') ||
+    game.game_type === 'cezali_esli'
+  )
+}
+
+export function getGameTypeLabel(
+  type: Game['game_type'],
+  subtype: Game['game_subtype'] = 'solo'
+): string {
+  const typeLabel = type === 'sayili_okey' ? 'Sayılı Okey' : 'Cezalı Okey'
+  const subtypeLabel = subtype === 'esli' ? 'Eşli' : 'Tekli'
+  return `${typeLabel} • ${subtypeLabel}`
+}
+
 export function isSayiliGame(game: Game): boolean {
   return game.game_type === 'sayili_okey'
 }
@@ -25,7 +41,7 @@ export function isEsliGame(game: Game): boolean {
 
 export function getTeams(game: Game): string[][] {
   if (game.teams && game.teams.length > 0) return game.teams
-  if (game.game_type === 'cezali_esli' || (game.game_type === 'sayili_okey' && game.game_subtype === 'esli')) {
+  if (isCezaliEsli(game) || (game.game_type === 'sayili_okey' && game.game_subtype === 'esli')) {
     if (game.players.length === 4) {
       return [[game.players[0], game.players[1]], [game.players[2], game.players[3]]]
     }
@@ -38,11 +54,9 @@ export function teamLabel(team: string[]): string {
 }
 
 export function getGameBadgeLabel(game: Game): string {
-  if (game.game_type === 'cezali_okey') return 'Cezalı Okey - Herkes Tek'
-  if (game.game_type === 'cezali_esli') return 'Cezalı Okey - Eşli'
-  if (game.game_type === 'sayili_okey' && game.game_subtype === 'esli') return 'Sayılı Okey - Eşli'
-  if (game.game_type === 'sayili_okey') return 'Sayılı Okey - Tekli'
-  return 'Okey'
+  const subtype = game.game_subtype ?? (game.game_type === 'cezali_esli' ? 'esli' : 'solo')
+  const type = game.game_type === 'cezali_esli' ? 'cezali_okey' : game.game_type
+  return getGameTypeLabel(type, subtype)
 }
 
 export function matchesGameFilter(game: Game, filter: GameTypeFilter): boolean {
