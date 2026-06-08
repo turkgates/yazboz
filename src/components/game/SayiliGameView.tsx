@@ -7,6 +7,7 @@ import { useGameStore } from '@/stores/gameStore'
 import type { SayiliOkeySettings } from '@/types'
 import {
   computeSayiliCurrentScores,
+  getIndicatorUsedThisEl,
   getSayiliFinishValue,
   getTeams,
   isEsliGame,
@@ -31,7 +32,6 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
   const navigate = useNavigate()
   const { currentGame, rounds, loadGame, appendRound, finishGame } = useGameStore()
   const [loading, setLoading] = useState(true)
-  const [indicators, setIndicators] = useState<Record<string, boolean>>({})
   const [finishTarget, setFinishTarget] = useState<string | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -43,6 +43,11 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
     if (!game) return [] as string[]
     return esli ? getTeams(game).map(teamLabel) : game.players
   }, [game, esli])
+
+  const indicatorUsed = useMemo(
+    () => getIndicatorUsedThisEl(rounds, entities),
+    [rounds, entities.join(',')]
+  )
 
   useEffect(() => {
     loadGameData()
@@ -65,6 +70,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
 
   const isFinished = game.status === 'finished'
   const currentScores = computeSayiliCurrentScores(game, rounds)
+  const indicatorValue = settings.indicatorValue ?? 1
 
   const finishGameAndNavigate = async () => {
     finishGame()
@@ -80,18 +86,10 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
     return false
   }
 
-  const handleIndicator = (entity: string) => {
-    if (!settings.showIndicator || isFinished || saving) return
-    const score = currentScores[entity] ?? settings.startScore
-    if (score <= 1) return
-    if (indicators[entity]) return
-    setIndicators((prev) => ({ ...prev, [entity]: true }))
-  }
-
   const saveRound = async (
     entity: string,
-    totalDrop: number,
-    indicatorUsed: boolean
+    drop: number,
+    opts: { isIndicatorOnly: boolean }
   ) => {
     setSaving(true)
     const roundNumber = rounds.length + 1
@@ -99,7 +97,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
 
     const scores: Record<string, number> = {}
     for (const e of entities) scores[e] = 0
-    scores[entity] = -totalDrop
+    scores[entity] = -drop
 
     const { data, error } = await insertRound({
       id: roundId,
@@ -110,31 +108,40 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
       double_finish: false,
       fake_okey: false,
       scores,
-      indicator_players: indicatorUsed ? [entity] : [],
+      indicator_players: opts.isIndicatorOnly ? [entity] : [],
+      is_indicator_only: opts.isIndicatorOnly,
     })
 
     setSaving(false)
 
     if (error) {
-      alert('El kaydedilemedi: ' + error.message)
-      return
+      alert(opts.isIndicatorOnly ? 'Gösterge kaydedilemedi: ' + error.message : 'El kaydedilemedi: ' + error.message)
+      return false
     }
 
     if (data) appendRound(data)
-    setIndicators({})
 
     const updatedScores = computeSayiliCurrentScores(game, [...rounds, data!])
     checkAutoFinish(updatedScores)
+    return true
+  }
+
+  const handleIndicator = async (entity: string) => {
+    if (!settings.showIndicator || isFinished || saving) return
+    if (indicatorUsed[entity]) return
+
+    const score = currentScores[entity] ?? settings.startScore
+    if (score <= 1) return
+
+    await saveRound(entity, indicatorValue, { isIndicatorOnly: true })
   }
 
   const handleFinishSelect = async (type: SayiliFinishType) => {
     if (!finishTarget || saving) return
     const finishValue = getSayiliFinishValue(settings, type)
-    const hasIndicator = !!indicators[finishTarget]
-    const totalDrop = finishValue + (hasIndicator ? settings.indicatorValue : 0)
 
     setFinishTarget(null)
-    await saveRound(finishTarget, totalDrop, hasIndicator)
+    await saveRound(finishTarget, finishValue, { isIndicatorOnly: false })
   }
 
   const handleManualEnd = async () => {
@@ -159,7 +166,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
           <div className={`grid ${gridCols} border-b border-[#2d3748] bg-[#0f3460] p-3 gap-2`}>
             {entities.map((entity) => {
               const score = currentScores[entity] ?? settings.startScore
-              const indicatorOn = !!indicators[entity]
+              const used = indicatorUsed[entity]
               return (
                 <div key={entity} className="text-center flex flex-col items-center">
                   <p className="text-white text-[10px] font-semibold truncate w-full mb-1">
@@ -182,12 +189,12 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
                         <button
                           type="button"
                           onClick={() => handleIndicator(entity)}
-                          disabled={score <= 1 || indicatorOn || saving}
-                          className={`flex-1 font-bold py-2 rounded-lg text-[10px] transition-colors disabled:opacity-40 ${
-                            indicatorOn
-                              ? 'bg-[#f5a623] text-[#1a1a2e]'
-                              : 'bg-[#16213e] text-[#a0aec0] hover:text-white border border-[#2d3748]'
-                          }`}
+                          disabled={used || score <= 1 || saving}
+                          className={`flex-1 font-bold py-2 rounded-lg text-[10px] transition-colors ${
+                            used
+                              ? 'opacity-50 cursor-not-allowed bg-[#2d3748] text-[#718096]'
+                              : 'bg-[#f5a623] hover:bg-[#e8b020] text-[#1a1a2e]'
+                          } disabled:opacity-40`}
                         >
                           ★
                         </button>
@@ -200,15 +207,29 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
           </div>
 
           {rounds.map((round) => (
-            <div key={round.id} className="flex border-b border-[#2d3748]/40">
+            <div
+              key={round.id}
+              className={`flex border-b border-[#2d3748]/40 ${
+                round.is_indicator_only ? 'bg-[#f5a623]/5' : ''
+              }`}
+            >
               <div className="w-10 shrink-0 flex items-center justify-center text-[#718096] text-xs">
-                {round.round_number}
+                {round.is_indicator_only ? '★' : round.round_number}
               </div>
               {entities.map((entity) => {
                 const val = round.scores[entity] ?? 0
+                const isIndicatorCell = round.is_indicator_only && val !== 0
                 return (
-                  <div key={entity} className="flex-1 py-2 text-center text-xs font-medium text-[#a0aec0]">
-                    {val === 0 ? '0' : val}
+                  <div key={entity} className="flex-1 py-2 text-center text-xs font-medium">
+                    {isIndicatorCell ? (
+                      <span className="text-[#f5a623]">
+                        ★ -{Math.abs(val)}
+                      </span>
+                    ) : val === 0 ? (
+                      <span className="text-[#718096]">0</span>
+                    ) : (
+                      <span className="text-[#a0aec0]">{val}</span>
+                    )}
                   </div>
                 )
               })}

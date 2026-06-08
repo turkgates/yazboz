@@ -53,6 +53,7 @@ create table if not exists rounds (
   fake_okey boolean default false,
   scores jsonb not null,
   indicator_players jsonb default '[]',
+  is_indicator_only boolean default false,
   created_at timestamptz default now(),
   unique(game_id, round_number)
 );

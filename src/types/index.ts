@@ -79,6 +79,7 @@ export interface Round {
   fake_okey?: boolean
   scores: Record<string, number>
   indicator_players?: string[]
+  is_indicator_only?: boolean
   created_at: string
 }
 

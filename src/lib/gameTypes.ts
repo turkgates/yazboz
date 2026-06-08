@@ -137,6 +137,32 @@ export function getGameRanking(
   return getRanking(totals)
 }
 
+export function getIndicatorUsedThisEl(
+  rounds: Round[],
+  entities: string[]
+): Record<string, boolean> {
+  const used: Record<string, boolean> = {}
+  for (const e of entities) used[e] = false
+
+  let elStart = 0
+  for (let i = rounds.length - 1; i >= 0; i--) {
+    if (!rounds[i].is_indicator_only) {
+      elStart = i + 1
+      break
+    }
+  }
+
+  for (const round of rounds.slice(elStart)) {
+    if (round.is_indicator_only) {
+      for (const player of round.indicator_players ?? []) {
+        used[player] = true
+      }
+    }
+  }
+
+  return used
+}
+
 export function getSayiliEntityScore(
   game: Game,
   rounds: Round[],
