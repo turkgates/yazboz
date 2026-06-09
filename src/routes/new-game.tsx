@@ -8,6 +8,8 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SavedPlayer, SayiliOkeySettings } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { DEFAULT_101_SETTINGS, DEFAULT_SAYILI_SETTINGS } from '@/lib/gameTypes'
+import { GameRulesModal, RulesHelpButton } from '@/components/GameRulesModal'
+import type { GameRulesKey } from '@/lib/gameRules'
 
 export const Route = createFileRoute('/new-game')({
   beforeLoad: async () => {
@@ -42,8 +44,11 @@ function NewGamePage() {
   const [totalRounds, setTotalRounds] = useState(cezaliSettings.defaultRounds)
   const [sayiliSettings, setSayiliSettings] = useState<SayiliOkeySettings>(DEFAULT_SAYILI_SETTINGS)
   const [yuzbirSettings, setYuzbirSettings] = useState<OkeyYuzbirSettings>(DEFAULT_101_SETTINGS)
+  const [winnersCount, setWinnersCount] = useState(2)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showRules, setShowRules] = useState(false)
+  const [rulesGameType, setRulesGameType] = useState<GameRulesKey>('cezali_okey')
 
   const isEsli = subtype === 'esli'
   const effectivePlayerCount = isEsli ? 4 : playerCount
@@ -108,10 +113,10 @@ function NewGamePage() {
       teams,
       katlamali: category === '101' ? yuzbirSettings.katlamali : undefined,
       settings: category === 'sayili'
-        ? sayiliSettings
+        ? { ...sayiliSettings, winnersCount }
         : category === '101'
-          ? yuzbirSettings
-          : cezaliSettings,
+          ? { ...yuzbirSettings, winnersCount }
+          : { ...cezaliSettings, winnersCount },
       finished_at: null,
     }
 
@@ -158,57 +163,84 @@ function NewGamePage() {
             Oyun Tipi
           </p>
           <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => handleCategoryChange('cezali')}
-              className={`rounded-2xl p-4 border text-left transition-all ${
-                category === 'cezali'
-                  ? 'bg-[#e94560]/10 border-[#e94560]'
-                  : 'bg-[#16213e] border-[#2d3748]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🎴</span>
-                <div>
-                  <p className="text-white font-semibold">Cezalı Okey</p>
-                  <p className="text-[#718096] text-xs">Ceza puanı ile oynanan klasik mod</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCategoryChange('cezali')}
+                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
+                  category === 'cezali'
+                    ? 'bg-[#e94560]/10 border-[#e94560]'
+                    : 'bg-[#16213e] border-[#2d3748]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🎴</span>
+                  <div>
+                    <p className="text-white font-semibold">Cezalı Okey</p>
+                    <p className="text-[#718096] text-xs">Ceza puanı ile oynanan klasik mod</p>
+                  </div>
                 </div>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCategoryChange('sayili')}
-              className={`rounded-2xl p-4 border text-left transition-all ${
-                category === 'sayili'
-                  ? 'bg-[#e94560]/10 border-[#e94560]'
-                  : 'bg-[#16213e] border-[#2d3748]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">🔢</span>
-                <div>
-                  <p className="text-white font-semibold">Sayılı Okey</p>
-                  <p className="text-[#718096] text-xs">Sayı düşürme ile oynanan mod</p>
+              </button>
+              <RulesHelpButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setRulesGameType('cezali_okey')
+                  setShowRules(true)
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCategoryChange('sayili')}
+                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
+                  category === 'sayili'
+                    ? 'bg-[#e94560]/10 border-[#e94560]'
+                    : 'bg-[#16213e] border-[#2d3748]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🔢</span>
+                  <div>
+                    <p className="text-white font-semibold">Sayılı Okey</p>
+                    <p className="text-[#718096] text-xs">Sayı düşürme ile oynanan mod</p>
+                  </div>
                 </div>
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCategoryChange('101')}
-              className={`rounded-2xl p-4 border text-left transition-all ${
-                category === '101'
-                  ? 'bg-[#e94560]/10 border-[#e94560]'
-                  : 'bg-[#16213e] border-[#2d3748]'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">💯</span>
-                <div>
-                  <p className="text-white font-semibold">101 Okey</p>
-                  <p className="text-[#718096] text-xs">Taş toplamlı bitiş sistemi</p>
+              </button>
+              <RulesHelpButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setRulesGameType('sayili_okey')
+                  setShowRules(true)
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCategoryChange('101')}
+                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
+                  category === '101'
+                    ? 'bg-[#e94560]/10 border-[#e94560]'
+                    : 'bg-[#16213e] border-[#2d3748]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">💯</span>
+                  <div>
+                    <p className="text-white font-semibold">101 Okey</p>
+                    <p className="text-[#718096] text-xs">Taş toplamlı bitiş sistemi</p>
+                  </div>
                 </div>
-              </div>
-            </button>
+              </button>
+              <RulesHelpButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setRulesGameType('yuzbir_okey')
+                  setShowRules(true)
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -229,6 +261,28 @@ function NewGamePage() {
                 }`}
               >
                 {subtypeLabel(category, sub)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
+            Kaç kişi kazanır?
+          </p>
+          <div className="flex gap-3">
+            {[1, 2, 3].map((count) => (
+              <button
+                key={count}
+                type="button"
+                onClick={() => setWinnersCount(count)}
+                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+                  winnersCount === count
+                    ? 'bg-[#e94560] text-white shadow-lg shadow-[#e94560]/20'
+                    : 'bg-[#16213e] border border-[#2d3748] text-[#a0aec0]'
+                }`}
+              >
+                {count} kişi
               </button>
             ))}
           </div>
@@ -453,6 +507,12 @@ function NewGamePage() {
           )}
         </motion.button>
       </div>
+
+      <GameRulesModal
+        gameType={rulesGameType}
+        isOpen={showRules}
+        onClose={() => setShowRules(false)}
+      />
     </div>
   )
 }

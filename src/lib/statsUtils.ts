@@ -1,7 +1,7 @@
 import type { CezaliGameSettings, Game, Round } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import { detectOkeyBurnType, getGameWinners, getLeader, getPlayerRank } from '@/lib/calculations'
-import { is101Game, isCezaliSettings, isEsliGame, getTeams, teamLabel, getGameRanking } from '@/lib/gameTypes'
+import { is101Game, isCezaliSettings, isEsliGame, getTeams, teamLabel, getGameRanking, getWinnersCount } from '@/lib/gameTypes'
 import { OKEY_YUZBIR_FINISH_SCORES } from '@/lib/101calculations'
 
 export function getScoreForPlayer(scores: Record<string, number>, playerName: string): number {
@@ -78,8 +78,7 @@ export interface PlayerProfileStats {
 export function computePlayerProfileStats(
   playerName: string,
   games: Game[],
-  roundsByGame: Record<string, Round[]>,
-  winnersCount: number
+  roundsByGame: Record<string, Round[]>
 ): PlayerProfileStats {
   let wins = 0
   let firstPlaceCount = 0
@@ -103,7 +102,7 @@ export function computePlayerProfileStats(
     if (bestGame === null || gameTotal < bestGame) bestGame = gameTotal
     if (worstGame === null || gameTotal > worstGame) worstGame = gameTotal
 
-    const winners = getGameWinners(playerTotals, winnersCount)
+    const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
     const rank = getPlayerRank(playerName, playerTotals)
 
     if (winners.some((w) => w.toLowerCase() === playerName.toLowerCase())) wins++
@@ -181,8 +180,7 @@ export interface GlobalStatsSummary {
 
 export function computeGlobalStats(
   games: Game[],
-  rounds: Round[],
-  winnersCount: number
+  rounds: Round[]
 ): GlobalStatsSummary {
   const roundsByGame = groupRoundsByGame(rounds)
   const playerMap = new Map<string, PlayerAggregateStats>()
@@ -220,7 +218,7 @@ export function computeGlobalStats(
     const gameRounds = roundsByGame[game.id] ?? []
     const gameDate = game.finished_at ?? game.created_at
     const playerTotals = computeGameTotals(game, gameRounds)
-    const winners = getGameWinners(playerTotals, winnersCount)
+    const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
 
     if (!longestGame || gameRounds.length > longestGame.rounds) {
       longestGame = { rounds: gameRounds.length, date: gameDate, gameId: game.id }

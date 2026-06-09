@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { supabase, signOut, fetchProfile, updateProfile } from '@/lib/supabase'
+import { supabase, signOut } from '@/lib/supabase'
 import { useSettingsStore } from '@/stores/gameStore'
 import type { Color } from '@/types'
 import { COLOR_LABELS, COLOR_HEX, DEFAULT_SETTINGS } from '@/types'
@@ -21,40 +21,16 @@ function SettingsPage() {
   const navigate = useNavigate()
   const { settings, updateSettings, resetSettings } = useSettingsStore()
   const [email, setEmail] = useState('')
-  const [winnersCount, setWinnersCount] = useState(1)
-  const [savingWinners, setSavingWinners] = useState(false)
-  const [winnersSaved, setWinnersSaved] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    supabase.auth.getUser().then(({ data }) => {
       setEmail(data.user?.email ?? '')
-      if (!data.user) return
-      const { data: profile } = await fetchProfile(data.user.id)
-      if (profile?.winners_count) setWinnersCount(profile.winners_count)
     })
   }, [])
 
   const handleSignOut = async () => {
     await signOut()
     navigate({ to: '/auth' })
-  }
-
-  const handleSaveWinnersCount = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
-    setSavingWinners(true)
-    setWinnersSaved(false)
-
-    const { error } = await updateProfile(user.id, { winners_count: winnersCount })
-    setSavingWinners(false)
-
-    if (error) {
-      alert('Ayar kaydedilemedi: ' + error.message)
-      return
-    }
-    setWinnersSaved(true)
-    setTimeout(() => setWinnersSaved(false), 2000)
   }
 
   const updateMultiplier = (color: Color, value: number) => {
@@ -88,44 +64,6 @@ function SettingsPage() {
       </div>
 
       <div className="flex-1 px-4 py-6 pb-20 max-w-lg mx-auto w-full overflow-y-auto">
-        <section className="mb-6">
-          <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-            Oyun Sonucu
-          </h2>
-          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4">
-            <p className="text-white text-sm font-medium mb-3">Kaç kişi kazanır?</p>
-            <div className="flex flex-col gap-2 mb-4">
-              {[1, 2, 3].map((count) => (
-                <label
-                  key={count}
-                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
-                    winnersCount === count
-                      ? 'border-[#e94560] bg-[#e94560]/10'
-                      : 'border-[#2d3748] bg-[#0f3460]/30'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="winnersCount"
-                    checked={winnersCount === count}
-                    onChange={() => setWinnersCount(count)}
-                    className="accent-[#e94560]"
-                  />
-                  <span className="text-white text-sm">{count} kişi</span>
-                </label>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={handleSaveWinnersCount}
-              disabled={savingWinners}
-              className="w-full bg-[#e94560] disabled:opacity-60 text-white font-bold py-3 rounded-xl"
-            >
-              {savingWinners ? 'Kaydediliyor...' : winnersSaved ? 'Kaydedildi ✓' : 'Kaydet'}
-            </button>
-          </div>
-        </section>
-
         <section className="mb-6">
           <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
             Renk Çarpanları

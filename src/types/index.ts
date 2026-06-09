@@ -24,6 +24,7 @@ export interface CezaliGameSettings {
   colorMultipliers: ColorMultipliers
   winnerBonus: WinnerBonus
   defaultRounds: number
+  winnersCount?: number
   note?: string
 }
 
@@ -34,12 +35,14 @@ export interface SayiliOkeySettings {
   normalFinish: number
   okeyOrDouble: number
   okeyAndDouble: number
+  winnersCount?: number
   note?: string
 }
 
 export interface OkeyYuzbirSettings {
   katlamali: boolean
   defaultRounds: number
+  winnersCount?: number
 }
 
 export type GameSettings = CezaliGameSettings | SayiliOkeySettings | OkeyYuzbirSettings

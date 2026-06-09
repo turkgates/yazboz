@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchPlayers, fetchProfile } from '@/lib/supabase'
+import { supabase, fetchPlayers } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import {
   Gamepad2,
@@ -45,7 +45,6 @@ function StatsPage() {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [gameFilter, setGameFilter] = useState<GameTypeFilter>([])
-  const [winnersCount, setWinnersCount] = useState(1)
   const [listVisibleCount, setListVisibleCount] = useState(PAGE_SIZE)
 
   useEffect(() => {
@@ -57,7 +56,7 @@ function StatsPage() {
     if (!user) return
     setUserId(user.id)
 
-    const [gamesRes, playersRes, profileRes] = await Promise.all([
+    const [gamesRes, playersRes] = await Promise.all([
       supabase
         .from('games')
         .select('*')
@@ -66,14 +65,11 @@ function StatsPage() {
         .order('created_at', { ascending: false })
         .returns<Game[]>(),
       fetchPlayers(user.id),
-      fetchProfile(user.id),
     ])
 
     const finishedGames = gamesRes.data ?? []
-    const wc = profileRes.data?.winners_count ?? 1
 
     setAllGames(finishedGames)
-    setWinnersCount(wc)
     setSavedPlayers(playersRes.data ?? [])
 
     if (finishedGames.length > 0) {
@@ -97,11 +93,11 @@ function StatsPage() {
       filteredGames.some((g) => g.id === r.game_id)
     )
     if (filteredGames.length > 0) {
-      setGlobalStats(computeGlobalStats(filteredGames, filteredRounds, winnersCount))
+      setGlobalStats(computeGlobalStats(filteredGames, filteredRounds))
     } else {
       setGlobalStats(null)
     }
-  }, [allGames, allRounds, gameFilter, winnersCount])
+  }, [allGames, allRounds, gameFilter])
 
   useEffect(() => {
     setListVisibleCount(PAGE_SIZE)

@@ -15,6 +15,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PlayersRouteImport } from './routes/players'
 import { Route as NewGameRouteImport } from './routes/new-game'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as DiceRouteImport } from './routes/dice'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayerPlayerIdRouteImport } from './routes/player.$playerId'
@@ -51,6 +52,11 @@ const HomeRoute = HomeRouteImport.update({
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DiceRoute = DiceRouteImport.update({
+  id: '/dice',
+  path: '/dice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -80,6 +86,7 @@ const GameOverGameIdRoute = GameOverGameIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dice': typeof DiceRoute
   '/home': typeof HomeRoute
   '/new-game': typeof NewGameRoute
   '/players': typeof PlayersRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dice': typeof DiceRoute
   '/home': typeof HomeRoute
   '/new-game': typeof NewGameRoute
   '/players': typeof PlayersRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/dice': typeof DiceRoute
   '/home': typeof HomeRoute
   '/new-game': typeof NewGameRoute
   '/players': typeof PlayersRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/dice'
     | '/home'
     | '/new-game'
     | '/players'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/dice'
     | '/home'
     | '/new-game'
     | '/players'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth'
+    | '/dice'
     | '/home'
     | '/new-game'
     | '/players'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  DiceRoute: typeof DiceRoute
   HomeRoute: typeof HomeRoute
   NewGameRoute: typeof NewGameRoute
   PlayersRoute: typeof PlayersRoute
@@ -217,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dice': {
+      id: '/dice'
+      path: '/dice'
+      fullPath: '/dice'
+      preLoaderRoute: typeof DiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -258,6 +278,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  DiceRoute: DiceRoute,
   HomeRoute: HomeRoute,
   NewGameRoute: NewGameRoute,
   PlayersRoute: PlayersRoute,

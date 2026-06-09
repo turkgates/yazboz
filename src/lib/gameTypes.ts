@@ -31,6 +31,14 @@ export function is101Settings(settings: GameSettings): settings is OkeyYuzbirSet
 export const DEFAULT_101_SETTINGS: OkeyYuzbirSettings = {
   katlamali: false,
   defaultRounds: 11,
+  winnersCount: 1,
+}
+
+export function getWinnersCount(settings: GameSettings): number {
+  if ('winnersCount' in settings && typeof settings.winnersCount === 'number') {
+    return Math.max(1, Math.min(3, settings.winnersCount))
+  }
+  return 1
 }
 
 export function isCezaliGame(game: Game): boolean {
@@ -124,6 +132,7 @@ export const DEFAULT_SAYILI_SETTINGS: SayiliOkeySettings = {
   normalFinish: 2,
   okeyOrDouble: 4,
   okeyAndDouble: 8,
+  winnersCount: 1,
 }
 
 export type SayiliFinishType = 'normal' | 'okey' | 'double' | 'okey_double'

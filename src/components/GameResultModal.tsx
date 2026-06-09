@@ -9,10 +9,13 @@ import {
   getGameRanking,
   getGameBadgeLabel,
   getTeamPlayers,
+  getWinnersCount,
   isCezaliGame,
   isEsliGame,
   isSayiliGame,
 } from '@/lib/gameTypes'
+import { ShareCard } from '@/components/ShareCard'
+import { shareGameResult } from '@/lib/shareUtils'
 import { getSayiliStartScore } from '@/lib/teamStatsUtils'
 import { supabase, fetchPlayers } from '@/lib/supabase'
 import { detectOkeyBurnType, getLeader } from '@/lib/calculations'
@@ -92,6 +95,7 @@ export function GameResultModal({
   const [loading, setLoading] = useState(true)
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
   const [summary, setSummary] = useState<GameSummary | null>(null)
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
@@ -147,6 +151,17 @@ export function GameResultModal({
   const isEsli = game ? isEsliGame(game) : false
   const isSayili = game ? isSayiliGame(game) : false
   const startScore = game && isSayili ? getSayiliStartScore(game) : 0
+
+  const handleShareModal = async () => {
+    if (!summary) return
+    setSharing(true)
+    try {
+      const winnerName = summary.ranking[0]?.name ?? 'Kazanan'
+      await shareGameResult('share-card-modal', winnerName)
+    } finally {
+      setSharing(false)
+    }
+  }
 
   return (
     <AnimatePresence>
@@ -291,22 +306,43 @@ export function GameResultModal({
               )}
             </div>
 
-            <div className="px-5 pb-5 flex gap-3 shrink-0 border-t border-[#2d3748] pt-4">
-              <button
-                type="button"
-                onClick={() => onViewScoreboard(gameId)}
-                disabled={loading}
-                className="flex-[2] bg-[#e94560] disabled:opacity-50 text-white font-bold py-3.5 rounded-xl"
-              >
-                Yazbozu Gör
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl"
-              >
-                Kapat
-              </button>
+            <div className="px-5 pb-5 flex flex-col gap-3 shrink-0 border-t border-[#2d3748] pt-4">
+              {!loading && summary && game && (
+                <>
+                  <ShareCard
+                    id="share-card-modal"
+                    gameTypeLabel={getGameBadgeLabel(game)}
+                    gameDate={formatGameDate(game.finished_at ?? game.created_at)}
+                    rankings={summary.ranking.map((r) => ({ name: r.name, total: r.total }))}
+                    winnersCount={getWinnersCount(game.settings)}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleShareModal}
+                    disabled={sharing}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 rounded-xl text-white text-sm font-medium transition-colors"
+                  >
+                    📤 {sharing ? 'Hazırlanıyor...' : 'Paylaş'}
+                  </button>
+                </>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => onViewScoreboard(gameId)}
+                  disabled={loading}
+                  className="flex-[2] bg-[#e94560] disabled:opacity-50 text-white font-bold py-3.5 rounded-xl"
+                >
+                  Yazbozu Gör
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl"
+                >
+                  Kapat
+                </button>
+              </div>
             </div>
           </motion.div>
         </motion.div>

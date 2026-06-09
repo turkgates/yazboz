@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchGamesPaginated, signOut } from '@/lib/supabase'
 import type { Game } from '@/types'
-import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Users } from 'lucide-react'
+import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Dices } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
 import { getGameTypeLabel } from '@/lib/gameTypes'
@@ -126,10 +126,10 @@ function HomePage() {
             </button>
           </Link>
 
-          <Link to="/players" className="block">
+          <Link to="/dice" className="block">
             <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
-              <Users size={22} className="text-[#e94560]" />
-              <span className="text-white text-sm font-semibold">Oyuncularım</span>
+              <Dices size={22} className="text-[#e94560]" />
+              <span className="text-white text-sm font-semibold">Zar At</span>
             </button>
           </Link>
 

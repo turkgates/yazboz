@@ -8,13 +8,16 @@ import {
   getGameRanking,
   getGameBadgeLabel,
   getTeamPlayers,
+  getWinnersCount,
   is101Game,
   isEsliGame,
   isSayiliGame,
 } from '@/lib/gameTypes'
 import { getSayiliStartScore } from '@/lib/teamStatsUtils'
-import { Home, RotateCcw } from 'lucide-react'
+import { Home, RotateCcw, Share2 } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
+import { ShareCard } from '@/components/ShareCard'
+import { shareGameResult } from '@/lib/shareUtils'
 import { v4 as uuidv4 } from 'uuid'
 import type { Game, SavedPlayer } from '@/types'
 import { formatGameDate } from '@/lib/dateUtils'
@@ -36,6 +39,7 @@ function GameOverPage() {
   const { settings } = useSettingsStore()
   const [loading, setLoading] = useState(!currentGame || currentGame.id !== gameId)
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     confetti({
@@ -117,6 +121,16 @@ function GameOverPage() {
   ]
 
   const winnerPlayers = isEsli ? getTeamPlayers(currentGame, winner.name) : [winner.name]
+  const gameTypeLabel = getGameBadgeLabel(currentGame)
+
+  const handleShare = async () => {
+    setSharing(true)
+    try {
+      await shareGameResult('share-card', winner.name)
+    } finally {
+      setSharing(false)
+    }
+  }
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col items-center px-4 py-8 pb-24 relative overflow-hidden">
@@ -251,12 +265,28 @@ function GameOverPage() {
         })}
       </div>
 
+      <ShareCard
+        id="share-card"
+        gameTypeLabel={gameTypeLabel}
+        gameDate={formatGameDate(currentGame.created_at)}
+        rankings={ranking.map((r) => ({ name: r.name, total: r.total }))}
+        winnersCount={getWinnersCount(currentGame.settings)}
+      />
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.7 }}
         className="w-full max-w-sm flex flex-col gap-3"
       >
+        <button
+          onClick={handleShare}
+          disabled={sharing}
+          className="w-full bg-[#0f3460] border border-[#2d3748] hover:border-[#e94560]/40 disabled:opacity-60 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors"
+        >
+          <Share2 size={20} />
+          {sharing ? 'Hazırlanıyor...' : 'Paylaş'}
+        </button>
         <button
           onClick={() => navigate({ to: '/game/$gameId', params: { gameId } })}
           className="w-full bg-[#0f3460] border border-[#2d3748] hover:border-[#e94560]/40 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors"

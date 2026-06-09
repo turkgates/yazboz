@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase, fetchPlayerById, fetchPlayerGamesWithRounds, fetchProfile } from '@/lib/supabase'
+import { supabase, fetchPlayerById, fetchPlayerGamesWithRounds } from '@/lib/supabase'
 import type { Game, SavedPlayer } from '@/types'
 import { getGameWinners, getPlayerRank } from '@/lib/calculations'
 import {
@@ -31,7 +31,7 @@ import {
   type OkeyYuzbir101Stats,
 } from '@/lib/statsUtils'
 import { formatGameDate } from '@/lib/dateUtils'
-import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, is101Game, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
+import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, getWinnersCount, is101Game, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 import { computePlayerEsliStats } from '@/lib/teamStatsUtils'
 import { Users } from 'lucide-react'
@@ -67,7 +67,6 @@ function PlayerProfilePage() {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
   const [allGames, setAllGames] = useState<Game[]>([])
   const [allRoundsByGame, setAllRoundsByGame] = useState<Record<string, import('@/types').Round[]>>({})
-  const [winnersCount, setWinnersCount] = useState(1)
   const [gameFilter, setGameFilter] = useState<GameTypeFilter>([])
   const [esliStats, setEsliStats] = useState<ReturnType<typeof computePlayerEsliStats>>(null)
   const [stats101, setStats101] = useState<OkeyYuzbir101Stats | null>(null)
@@ -89,13 +88,10 @@ function PlayerProfilePage() {
 
     setPlayer(playerData)
 
-    const { data: profile } = await fetchProfile(user.id)
-    setWinnersCount(profile?.winners_count ?? 1)
-
     const { games, roundsByGame } = await fetchPlayerGamesWithRounds(user.id, playerData.name)
     setAllGames(games)
     setAllRoundsByGame(roundsByGame)
-    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame, profile?.winners_count ?? 1))
+    setStats(computePlayerProfileStats(playerData.name, games, roundsByGame))
     setLoading(false)
   }
 
@@ -111,12 +107,12 @@ function PlayerProfilePage() {
       filteredRoundsByGame[game.id] = allRoundsByGame[game.id] ?? []
     }
 
-    setStats(computePlayerProfileStats(player.name, filteredGames, filteredRoundsByGame, winnersCount))
+    setStats(computePlayerProfileStats(player.name, filteredGames, filteredRoundsByGame))
 
     const items: GameHistoryItem[] = filteredGames.slice(0, 10).map((game) => {
       const rounds = filteredRoundsByGame[game.id] ?? []
       const playerTotals = computeGameTotals(game, rounds)
-      const winners = getGameWinners(playerTotals, winnersCount)
+      const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
       const rank = getPlayerRank(player.name, playerTotals)
       const total = isSayiliGame(game)
         ? getSayiliEntityScore(game, rounds, player.name)
@@ -137,7 +133,7 @@ function PlayerProfilePage() {
     } else {
       setStats101(null)
     }
-  }, [player, allGames, allRoundsByGame, gameFilter, winnersCount])
+  }, [player, allGames, allRoundsByGame, gameFilter])
 
   if (loading) {
     return (
