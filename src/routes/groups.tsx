@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, redirect, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
@@ -17,6 +17,7 @@ export const Route = createFileRoute('/groups')({
 
 function GroupsPage() {
   const navigate = useNavigate()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -24,17 +25,20 @@ function GroupsPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    loadGroups()
-  }, [])
-
   const loadGroups = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    setLoading(true)
     const { data } = await fetchMyGroups(user.id)
     setGroups(data ?? [])
     setLoading(false)
   }
+
+  useEffect(() => {
+    if (pathname === '/groups') {
+      loadGroups()
+    }
+  }, [pathname])
 
   const handleCreate = async () => {
     if (!newGroupName.trim()) return
@@ -54,7 +58,7 @@ function GroupsPage() {
       }
 
       const group = await createGroup(newGroupName.trim(), user.id)
-      setGroups((prev) => [group, ...prev])
+      await loadGroups()
       setShowCreate(false)
       setNewGroupName('')
       navigate({ to: '/group/$groupId', params: { groupId: group.id } })

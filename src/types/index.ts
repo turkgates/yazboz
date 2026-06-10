@@ -122,6 +122,7 @@ export interface Group {
   owner_id: string
   invite_code: string
   created_at: string
+  myRole?: 'admin' | 'member'
 }
 
 export interface GroupMember {

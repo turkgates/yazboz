@@ -42,19 +42,37 @@ export async function searchProfileByUsername(username: string) {
 // ── Groups ────────────────────────────────────────────────────────────────
 
 export async function fetchMyGroups(userId: string) {
-  const { data: memberships, error } = await supabase
+  const { data, error } = await supabase
     .from('group_members')
-    .select('group_id')
+    .select(`
+      role,
+      joined_at,
+      groups (
+        id,
+        name,
+        invite_code,
+        owner_id,
+        created_at
+      )
+    `)
     .eq('user_id', userId)
-  if (error || !memberships?.length) return { data: [] as Group[], error }
+    .order('joined_at', { ascending: false })
 
-  const groupIds = memberships.map((m) => m.group_id)
-  return supabase
-    .from('groups')
-    .select('*')
-    .in('id', groupIds)
-    .order('created_at', { ascending: false })
-    .returns<Group[]>()
+  if (error) {
+    console.error('fetchMyGroups error:', error)
+    return { data: [] as Group[], error }
+  }
+
+  const groups: Group[] = []
+  for (const row of data ?? []) {
+    const g = row.groups as Group | Group[] | null
+    const group = Array.isArray(g) ? g[0] : g
+    if (group) {
+      groups.push({ ...group, myRole: row.role as 'admin' | 'member' })
+    }
+  }
+
+  return { data: groups, error: null }
 }
 
 export async function fetchGroupById(groupId: string) {
@@ -87,67 +105,114 @@ function generateInviteCode(): string {
 }
 
 async function findAvailableInviteCode(): Promise<string> {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const inviteCode = generateInviteCode()
-    const { data } = await supabase
-      .from('groups')
-      .select('id')
-      .eq('invite_code', inviteCode)
-      .maybeSingle()
-    if (!data) return inviteCode
-  }
-  throw new Error('Davet kodu oluşturulamadı, tekrar deneyin')
+  // Pre-check may fail under RLS; rely on insert retry for uniqueness
+  return generateInviteCode()
 }
 
 export async function createGroup(name: string, ownerId: string): Promise<Group> {
-  const inviteCode = await findAvailableInviteCode()
+  let lastError: Error | null = null
 
-  const { data: group, error } = await supabase
-    .from('groups')
-    .insert({ name, owner_id: ownerId, invite_code: inviteCode })
-    .select()
-    .single<Group>()
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const inviteCode = await findAvailableInviteCode()
 
-  if (error || !group) {
+    const { data: group, error } = await supabase
+      .from('groups')
+      .insert({ name, owner_id: ownerId, invite_code: inviteCode })
+      .select()
+      .single<Group>()
+
+    if (!error && group) {
+      const { error: memberError } = await supabase.from('group_members').insert({
+        group_id: group.id,
+        user_id: ownerId,
+        role: 'admin',
+      })
+
+      if (memberError) {
+        console.error('Üye ekleme hatası:', memberError)
+        throw memberError
+      }
+
+      return group
+    }
+
+    if (error?.code === '23505') {
+      lastError = error
+      continue
+    }
+
     console.error('Grup oluşturma hatası:', error)
     throw error ?? new Error('Grup oluşturulamadı')
   }
 
-  const { error: memberError } = await supabase.from('group_members').insert({
-    group_id: group.id,
-    user_id: ownerId,
-    role: 'admin',
-  })
-
-  if (memberError) {
-    console.error('Üye ekleme hatası:', memberError)
-    throw memberError
-  }
-
-  return group
+  throw lastError ?? new Error('Davet kodu oluşturulamadı, tekrar deneyin')
 }
 
 export async function joinGroupByCode(code: string, userId: string): Promise<Group> {
-  const { data: group } = await supabase
-    .from('groups')
-    .select('*')
-    .eq('invite_code', code.toUpperCase())
-    .single<Group>()
-  if (!group) throw new Error('Geçersiz davet kodu')
+  const normalizedCode = code.toUpperCase().trim()
+  console.log('Kod aranıyor:', normalizedCode)
+
+  const { data: lookupRows, error: groupError } = await supabase
+    .rpc('lookup_group_by_invite_code', { p_code: normalizedCode })
+
+  const group = (lookupRows as Pick<Group, 'id' | 'name' | 'invite_code'>[] | null)?.[0] ?? null
+  console.log('Grup bulundu:', group, 'Hata:', groupError)
+
+  if (groupError || !group) {
+    throw new Error('Geçersiz davet kodu')
+  }
+
+  const { data: existing } = await supabase
+    .from('group_members')
+    .select('id')
+    .eq('group_id', group.id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  console.log('Mevcut üyelik:', existing)
+
+  if (existing) {
+    throw new Error('Zaten bu grubun üyesisin')
+  }
 
   const { count } = await supabase
     .from('group_members')
     .select('*', { count: 'exact', head: true })
     .eq('group_id', group.id)
-  if ((count ?? 0) >= 10) throw new Error('Grup dolu (max 10 üye)')
 
-  const { error } = await supabase
+  console.log('Üye sayısı:', count)
+
+  if ((count ?? 0) >= 10) {
+    throw new Error('Grup dolu (maksimum 10 üye)')
+  }
+
+  const { data: newMember, error: joinError } = await supabase
     .from('group_members')
-    .insert({ group_id: group.id, user_id: userId, role: 'member' })
-  if (error && !error.message.includes('unique')) throw error
+    .insert({
+      group_id: group.id,
+      user_id: userId,
+      role: 'member',
+    })
+    .select()
+    .single()
+
+  console.log('Katılma sonucu:', newMember, 'Hata:', joinError)
+
+  if (joinError) {
+    console.error('Katılma hatası detay:', joinError)
+    throw new Error('Gruba katılınamadı: ' + joinError.message)
+  }
 
   await syncGroupMembersToPlayersList(group.id, userId)
-  return group
+
+  return {
+    id: group.id,
+    name: group.name,
+    invite_code: group.invite_code,
+    owner_id: '',
+    created_at: new Date().toISOString(),
+    myRole: 'member',
+  }
 }
 
 export async function leaveGroup(groupId: string, userId: string) {
