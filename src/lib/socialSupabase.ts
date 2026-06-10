@@ -78,23 +78,51 @@ export async function fetchGroupGamesCount(groupId: string): Promise<number> {
 }
 
 function generateInviteCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase()
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = ''
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return code
+}
+
+async function findAvailableInviteCode(): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const inviteCode = generateInviteCode()
+    const { data } = await supabase
+      .from('groups')
+      .select('id')
+      .eq('invite_code', inviteCode)
+      .maybeSingle()
+    if (!data) return inviteCode
+  }
+  throw new Error('Davet kodu oluşturulamadı, tekrar deneyin')
 }
 
 export async function createGroup(name: string, ownerId: string): Promise<Group> {
-  const inviteCode = generateInviteCode()
+  const inviteCode = await findAvailableInviteCode()
+
   const { data: group, error } = await supabase
     .from('groups')
     .insert({ name, owner_id: ownerId, invite_code: inviteCode })
     .select()
     .single<Group>()
-  if (error || !group) throw error ?? new Error('Grup oluşturulamadı')
 
-  await supabase.from('group_members').insert({
+  if (error || !group) {
+    console.error('Grup oluşturma hatası:', error)
+    throw error ?? new Error('Grup oluşturulamadı')
+  }
+
+  const { error: memberError } = await supabase.from('group_members').insert({
     group_id: group.id,
     user_id: ownerId,
     role: 'admin',
   })
+
+  if (memberError) {
+    console.error('Üye ekleme hatası:', memberError)
+    throw memberError
+  }
 
   return group
 }

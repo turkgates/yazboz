@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { createGroup, fetchMyGroups } from '@/lib/socialSupabase'
+import { createGroup, fetchMyGroups, fetchUserProfile } from '@/lib/socialSupabase'
 import type { Group } from '@/types'
 import { BackButton } from '@/components/layout/BackButton'
 import { Plus, QrCode, Users } from 'lucide-react'
@@ -17,7 +17,6 @@ export const Route = createFileRoute('/groups')({
 
 function GroupsPage() {
   const navigate = useNavigate()
-  const [userId, setUserId] = useState('')
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -32,7 +31,6 @@ function GroupsPage() {
   const loadGroups = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    setUserId(user.id)
     const { data } = await fetchMyGroups(user.id)
     setGroups(data ?? [])
     setLoading(false)
@@ -43,13 +41,27 @@ function GroupsPage() {
     setCreating(true)
     setError('')
     try {
-      const group = await createGroup(newGroupName.trim(), userId)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        navigate({ to: '/auth' })
+        return
+      }
+
+      const { data: profile } = await fetchUserProfile(user.id)
+      if (!profile?.username) {
+        navigate({ to: '/onboarding' })
+        return
+      }
+
+      const group = await createGroup(newGroupName.trim(), user.id)
       setGroups((prev) => [group, ...prev])
       setShowCreate(false)
       setNewGroupName('')
       navigate({ to: '/group/$groupId', params: { groupId: group.id } })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Hata oluştu')
+      console.error('Detaylı hata:', err)
+      const message = err instanceof Error ? err.message : 'Hata oluştu'
+      setError(message)
     } finally {
       setCreating(false)
     }

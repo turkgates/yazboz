@@ -36,6 +36,13 @@ create policy "Grup üyeleri grubu görür"
     id in (select group_id from group_members where user_id = auth.uid())
   );
 
+create policy "Grup sahibi grubu görür"
+  on groups for select using (owner_id = auth.uid());
+
+create policy "Kullanıcı grup oluşturabilir"
+  on groups for insert
+  with check (owner_id = auth.uid());
+
 create policy "Grup sahibi grubu yönetir"
   on groups for all using (owner_id = auth.uid());
 
