@@ -15,13 +15,13 @@ import {
 import { calculateTotals } from '@/lib/calculations'
 import {
   applyBankoToHistory,
-  getBankoCount,
   getBankoEntities,
   getBankoHistory,
   getForcedBankos,
   mustForceBanko,
 } from '@/lib/bankoluUtils'
 import { GameHeader } from '@/components/game/GameHeader'
+import { GameSettingsModal } from '@/components/game/GameSettingsModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import {
   BankoluRoundEntryModal,
@@ -41,17 +41,21 @@ export function BankoluGameView({ gameId }: Props) {
   const [players, setPlayers] = useState<SavedPlayer[]>([])
   const [currentBankos, setCurrentBankos] = useState<string[]>([])
   const [showEntry, setShowEntry] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
 
+  const refetchGame = async () => {
+    const { game: g, rounds: r } = await fetchGameWithRounds(gameId)
+    if (g) {
+      setGame(g)
+      setRounds(r)
+      loadGame(g, r)
+    }
+  }
+
   useEffect(() => {
-    fetchGameWithRounds(gameId).then(({ game: g, rounds: r }) => {
-      if (g) {
-        setGame(g)
-        setRounds(r)
-        loadGame(g, r)
-      }
-    })
+    refetchGame()
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
         const { data: pData } = await fetchPlayers(data.user.id)
@@ -65,8 +69,7 @@ export function BankoluGameView({ gameId }: Props) {
 
   const esli = isBankoluEsli(currentGame_)
   const teams = esli ? getTeams(currentGame_) : []
-  const entities = getBankoEntities(currentGame_)
-  const displayPlayers = currentGame_.players
+  const columns = getBankoEntities(currentGame_)
   const totalRounds = currentGame_.total_rounds
   const isFinished = currentGame_.status === 'finished'
   const currentRound = rounds.length + 1
@@ -74,8 +77,8 @@ export function BankoluGameView({ gameId }: Props) {
 
   const totals = useMemo(() => {
     if (esli) return computeCezaliTeamTotals(currentGame_, rounds)
-    return calculateTotals(displayPlayers, rounds.map((r) => r.scores))
-  }, [currentGame_, rounds, esli, displayPlayers.join(',')])
+    return calculateTotals(currentGame_.players, rounds.map((r) => r.scores))
+  }, [currentGame_, rounds, esli])
 
   useEffect(() => {
     if (isFinished) return
@@ -91,9 +94,15 @@ export function BankoluGameView({ gameId }: Props) {
   const getAvatarUrl = (name: string) =>
     players.find((p) => p.name === name)?.avatar_url ?? null
 
+  const getAvatarPlayers = (entity: string) =>
+    esli ? (teams.find((t) => teamLabel(t) === entity) ?? [entity]) : [entity]
+
   const toggleBanko = (entity: string) => {
     if (isFinished || saving) return
+    const alreadyUsedBanko = (bankoHistory[entity]?.length ?? 0) > 0
     const forced = mustForceBanko(bankoHistory, entity, currentRound, totalRounds)
+
+    if (alreadyUsedBanko && !currentBankos.includes(entity)) return
     if (forced && currentBankos.includes(entity)) return
 
     setCurrentBankos((prev) =>
@@ -152,7 +161,7 @@ export function BankoluGameView({ gameId }: Props) {
     navigate({ to: '/game-over/$gameId', params: { gameId } })
   }
 
-  const colWidth = displayPlayers.length <= 2 ? 'flex-1' : displayPlayers.length === 3 ? 'flex-1' : 'w-[72px]'
+  const colWidth = columns.length <= 2 ? 'flex-1' : columns.length === 3 ? 'flex-1' : 'w-[72px]'
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
@@ -162,23 +171,23 @@ export function BankoluGameView({ gameId }: Props) {
         subtitle={`El ${Math.min(currentRound, totalRounds)} / ${totalRounds}`}
         showEndGame={!isFinished}
         onEndGame={() => setShowEndConfirm(true)}
-        onSettings={() => {}}
+        onSettings={() => setShowSettings(true)}
       />
 
-      {/* Banko buttons */}
-      {!isFinished && (
-        <div className="bg-[#16213e] border-b border-[#2d3748] px-4 py-4">
-          <div className={`grid gap-3 max-w-lg mx-auto ${esli ? 'grid-cols-2' : `grid-cols-${Math.min(displayPlayers.length, 4)}`}`}>
-            {(esli ? entities : displayPlayers).map((entity) => {
-              const isActive = currentBankos.includes(entity)
+      <div className="flex-1 overflow-x-auto px-2 py-3 max-w-lg mx-auto w-full pb-28">
+        <div className="min-w-max bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden">
+          {/* Column headers: avatar + name + banko (once) */}
+          <div className="flex border-b border-[#2d3748] bg-[#0f3460]">
+            <div className="w-10 shrink-0" />
+            {columns.map((entity) => {
+              const avatarPlayers = getAvatarPlayers(entity)
+              const alreadyUsedBanko = (bankoHistory[entity]?.length ?? 0) > 0
               const forced = mustForceBanko(bankoHistory, entity, currentRound, totalRounds)
-              const count = getBankoCount(bankoHistory, entity)
-              const avatarPlayers = esli
-                ? (teams.find((t) => teamLabel(t) === entity) ?? [entity])
-                : [entity]
+              const isActive = currentBankos.includes(entity)
+              const disabled = (alreadyUsedBanko && !isActive) || (forced && isActive)
 
               return (
-                <div key={entity} className="flex flex-col items-center gap-1">
+                <div key={entity} className={`${colWidth} py-3 px-1 flex flex-col items-center gap-1.5`}>
                   <div className="flex justify-center">
                     {avatarPlayers.map((p, i) => (
                       <div key={p} style={{ marginLeft: i > 0 ? -10 : 0 }} className="relative">
@@ -186,41 +195,28 @@ export function BankoluGameView({ gameId }: Props) {
                       </div>
                     ))}
                   </div>
-                  <p className="text-[#a0aec0] text-xs font-medium text-center truncate w-full">{entity}</p>
-                  <button
-                    type="button"
-                    onClick={() => toggleBanko(entity)}
-                    disabled={forced && isActive}
-                    title={forced ? 'Son el banko zorunlu!' : undefined}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      isActive
-                        ? 'bg-red-600 text-white shadow-lg shadow-red-600/30'
-                        : 'bg-[#0f3460] text-[#a0aec0] border border-[#2d3748] hover:border-red-500/50'
-                    } ${forced && isActive ? 'opacity-80 cursor-not-allowed' : ''}`}
-                  >
-                    💥 BANKO
-                  </button>
-                  <p className="text-[#718096] text-[10px]">Banko: {count}/{totalRounds}</p>
-                  {forced && <p className="text-red-400 text-[9px] text-center">Son el zorunlu!</p>}
+                  <p className="text-white text-[10px] font-semibold text-center truncate w-full">{entity}</p>
+                  {!isFinished && (
+                    <button
+                      type="button"
+                      onClick={() => toggleBanko(entity)}
+                      disabled={disabled}
+                      title={forced ? 'Son el banko zorunlu!' : undefined}
+                      className={`rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                        isActive
+                          ? 'border-2 border-red-500 text-red-400 bg-red-500/10'
+                          : 'border border-[#4a5568] text-[#a0aec0]'
+                      } ${alreadyUsedBanko ? 'opacity-40 cursor-not-allowed' : 'hover:border-red-400'}`}
+                    >
+                      💥 BANKO
+                    </button>
+                  )}
                 </div>
               )
             })}
           </div>
-        </div>
-      )}
 
-      {/* Score table */}
-      <div className="flex-1 overflow-x-auto px-2 py-3 max-w-lg mx-auto w-full pb-28">
-        <div className="min-w-max">
-          <div className="flex border-b border-[#2d3748] pb-2 mb-1">
-            <div className="w-10 shrink-0" />
-            {displayPlayers.map((player) => (
-              <div key={player} className={`${colWidth} text-center px-1`}>
-                <p className="text-[#a0aec0] text-[10px] font-medium truncate">{player}</p>
-              </div>
-            ))}
-          </div>
-
+          {/* Round rows */}
           {rounds.map((round, idx) => (
             <div key={round.id} className={`flex border-b border-[#2d3748]/50 ${idx % 2 ? 'bg-[#0f3460]/20' : ''}`}>
               <div className="w-10 shrink-0 flex flex-col items-center justify-center py-2">
@@ -229,14 +225,10 @@ export function BankoluGameView({ gameId }: Props) {
                   <span className="text-red-400 text-[8px]">💥</span>
                 )}
               </div>
-              {displayPlayers.map((player) => {
-                let score = round.scores[player] ?? 0
-                if (esli) {
-                  const team = teams.find((t) => t.includes(player))
-                  if (team) score = round.scores[teamLabel(team)] ?? 0
-                }
+              {columns.map((entity) => {
+                const score = round.scores[entity] ?? 0
                 return (
-                  <div key={player} className={`${colWidth} py-2 px-1 text-center`}>
+                  <div key={entity} className={`${colWidth} py-2 px-1 text-center`}>
                     <span className={`text-xs font-medium ${score < 0 ? 'text-green-400' : score > 0 ? 'text-red-400' : 'text-[#718096]'}`}>
                       {score === 0 ? '-' : score > 0 ? `+${score}` : score}
                     </span>
@@ -246,16 +238,15 @@ export function BankoluGameView({ gameId }: Props) {
             </div>
           ))}
 
-          <div className="flex bg-[#0f3460] border-t-2 border-[#2d3748] mt-1">
-            <div className="w-10 shrink-0" />
-            {displayPlayers.map((player) => {
-              let total = totals[player] ?? 0
-              if (esli) {
-                const team = teams.find((t) => t.includes(player))
-                if (team) total = totals[teamLabel(team)] ?? 0
-              }
+          {/* Totals */}
+          <div className="flex bg-[#0f3460] border-t-2 border-[#2d3748]">
+            <div className="w-10 shrink-0 flex items-center justify-center">
+              <span className="text-[#718096] text-[10px] font-bold">Σ</span>
+            </div>
+            {columns.map((entity) => {
+              const total = totals[entity] ?? 0
               return (
-                <div key={player} className={`${colWidth} py-3 px-1 text-center`}>
+                <div key={entity} className={`${colWidth} py-3 px-1 text-center`}>
                   <p className={`text-sm font-bold ${total < 0 ? 'text-green-400' : total > 0 ? 'text-red-400' : 'text-white'}`}>
                     {total}
                   </p>
@@ -311,6 +302,16 @@ export function BankoluGameView({ gameId }: Props) {
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSettings && (
+          <GameSettingsModal
+            game={currentGame_}
+            onClose={() => setShowSettings(false)}
+            onSaved={refetchGame}
+          />
         )}
       </AnimatePresence>
 

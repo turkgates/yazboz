@@ -335,15 +335,17 @@ export function BankoluRoundEntryModal({
                       />
                     )}
 
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={fakeOpeners[player] ?? false}
-                        onChange={(e) => setFakeOpeners((prev) => ({ ...prev, [player]: e.target.checked }))}
-                        className="accent-purple-500"
-                      />
-                      <span className="text-[#a0aec0] text-xs">Sahte Okey Açtı (+100)</span>
-                    </label>
+                    {fakeOkey && (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={fakeOpeners[player] ?? false}
+                          onChange={(e) => setFakeOpeners((prev) => ({ ...prev, [player]: e.target.checked }))}
+                          className="accent-purple-500"
+                        />
+                        <span className="text-[#a0aec0] text-xs">Sahte Okey Açtı (+100)</span>
+                      </label>
+                    )}
                   </div>
                 )
               })}
