@@ -5,6 +5,7 @@ const FILTERS: { id: GameFilterKey | 'all'; label: string }[] = [
   { id: 'cezali', label: 'Cezalı' },
   { id: 'sayili', label: 'Sayılı' },
   { id: '101', label: '101' },
+  { id: 'bankolu', label: 'Bankolu' },
   { id: 'solo', label: 'Tekli' },
   { id: 'esli', label: 'Eşli' },
 ]

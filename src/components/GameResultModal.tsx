@@ -10,10 +10,12 @@ import {
   getGameBadgeLabel,
   getTeamPlayers,
   getWinnersCount,
+  isBankoluGame,
   isCezaliGame,
   isEsliGame,
   isSayiliGame,
 } from '@/lib/gameTypes'
+import { getBankoSummaryLines } from '@/lib/bankoluStatsUtils'
 import { ShareCard } from '@/components/ShareCard'
 import { shareGameResult } from '@/lib/shareUtils'
 import { getSayiliStartScore } from '@/lib/teamStatsUtils'
@@ -150,6 +152,8 @@ export function GameResultModal({
 
   const isEsli = game ? isEsliGame(game) : false
   const isSayili = game ? isSayiliGame(game) : false
+  const isBankolu = game ? isBankoluGame(game) : false
+  const bankoSummary = game && isBankolu ? getBankoSummaryLines(game) : []
   const startScore = game && isSayili ? getSayiliStartScore(game) : 0
 
   const handleShareModal = async () => {
@@ -296,6 +300,11 @@ export function GameResultModal({
                         <span className="text-purple-400 font-semibold">{summary.fakeOkeyRounds}</span>
                       </p>
                     )}
+                    {bankoSummary.map((line) => (
+                      <p key={line} className="text-white text-sm">
+                        💥 {line}
+                      </p>
+                    ))}
                     {isSayili ? (
                       <p className="text-[#718096] text-sm">Sayılı okey — en düşük sayı kazanır</p>
                     ) : okeyThrowEntries.length === 0 && okeyBurnEntries.length === 0 && summary.fakeOkeyRounds === 0 ? (

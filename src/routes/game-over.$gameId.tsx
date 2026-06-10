@@ -10,9 +10,11 @@ import {
   getTeamPlayers,
   getWinnersCount,
   is101Game,
+  isBankoluGame,
   isEsliGame,
   isSayiliGame,
 } from '@/lib/gameTypes'
+import { getBankoSummaryLines } from '@/lib/bankoluStatsUtils'
 import { getSayiliStartScore } from '@/lib/teamStatsUtils'
 import { Home, RotateCcw, Share2 } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
@@ -82,7 +84,10 @@ function GameOverPage() {
       total_rounds: currentGame.total_rounds,
       players: currentGame.players,
       teams: currentGame.teams,
-      settings: (isSayiliGame(currentGame) || is101Game(currentGame)) ? currentGame.settings : settings,
+      settings: (isSayiliGame(currentGame) || is101Game(currentGame) || isBankoluGame(currentGame))
+        ? currentGame.settings
+        : settings,
+      banko_history: isBankoluGame(currentGame) ? {} : undefined,
       created_at: new Date().toISOString(),
       finished_at: null,
     }
@@ -109,7 +114,9 @@ function GameOverPage() {
   const winner = ranking[0]
   const isSayili = isSayiliGame(currentGame)
   const is101 = is101Game(currentGame)
+  const isBankolu = isBankoluGame(currentGame)
   const isEsli = isEsliGame(currentGame)
+  const bankoSummary = isBankolu ? getBankoSummaryLines(currentGame) : []
   const startScore = isSayili ? getSayiliStartScore(currentGame) : 0
 
   const medals = ['🥇', '🥈', '🥉', '4️⃣']
@@ -186,6 +193,15 @@ function GameOverPage() {
           )}
         </p>
       </motion.div>
+
+      {isBankolu && bankoSummary.length > 0 && (
+        <div className="w-full max-w-sm mb-6 bg-[#16213e] border border-[#2d3748] rounded-2xl p-4">
+          <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">Banko Özeti</p>
+          {bankoSummary.map((line) => (
+            <p key={line} className="text-[#718096] text-sm">💥 {line}</p>
+          ))}
+        </div>
+      )}
 
       <div className="w-full max-w-sm flex flex-col gap-3 mb-8">
         {ranking.map((item, i) => {

@@ -2,7 +2,7 @@ export type Color = 'black' | 'red' | 'yellow' | 'green'
 
 export type GameStatus = 'active' | 'finished'
 
-export type GameType = 'cezali_okey' | 'cezali_esli' | 'sayili_okey' | '101_okey'
+export type GameType = 'cezali_okey' | 'cezali_esli' | 'sayili_okey' | '101_okey' | 'bankolu_cezali_okey'
 
 export type GameSubtype = 'solo' | 'esli'
 
@@ -74,6 +74,7 @@ export interface Game {
   teams?: string[][] | null
   settings: GameSettings
   katlamali?: boolean
+  banko_history?: Record<string, number[]>
   created_at: string
   finished_at?: string | null
 }
@@ -89,6 +90,7 @@ export interface Round {
   scores: Record<string, number>
   indicator_players?: string[]
   is_indicator_only?: boolean
+  banko_players?: string[]
   created_at: string
 }
 

@@ -31,7 +31,8 @@ import {
   type OkeyYuzbir101Stats,
 } from '@/lib/statsUtils'
 import { formatGameDate } from '@/lib/dateUtils'
-import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, getWinnersCount, is101Game, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
+import { matchesGameFilter, getGameBadgeLabel, getSayiliEntityScore, getWinnersCount, is101Game, isBankoluGame, isSayiliGame, type GameTypeFilter } from '@/lib/gameTypes'
+import { computePlayerBankoluStats, type PlayerBankoluStats } from '@/lib/bankoluStatsUtils'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 import { computePlayerEsliStats } from '@/lib/teamStatsUtils'
 import { Users } from 'lucide-react'
@@ -70,6 +71,7 @@ function PlayerProfilePage() {
   const [gameFilter, setGameFilter] = useState<GameTypeFilter>([])
   const [esliStats, setEsliStats] = useState<ReturnType<typeof computePlayerEsliStats>>(null)
   const [stats101, setStats101] = useState<OkeyYuzbir101Stats | null>(null)
+  const [statsBankolu, setStatsBankolu] = useState<PlayerBankoluStats | null>(null)
 
   const loadProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -133,6 +135,13 @@ function PlayerProfilePage() {
     } else {
       setStats101(null)
     }
+
+    const gamesBankolu = filteredGames.filter((g) => isBankoluGame(g))
+    if (gamesBankolu.length > 0) {
+      setStatsBankolu(computePlayerBankoluStats(player.name, filteredGames, filteredRoundsByGame))
+    } else {
+      setStatsBankolu(null)
+    }
   }, [player, allGames, allRoundsByGame, gameFilter])
 
   if (loading) {
@@ -177,6 +186,39 @@ function PlayerProfilePage() {
             Düzenle
           </button>
         </div>
+
+        {statsBankolu && (
+          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">💥</span>
+              <h3 className="text-white font-semibold text-sm">Bankolu Okey</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Oyun</p>
+                <p className="text-white font-bold text-base">{statsBankolu.totalGames}</p>
+              </div>
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Toplam Banko</p>
+                <p className="text-[#e94560] font-bold text-base">{statsBankolu.totalBankos}</p>
+              </div>
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Bankodan Kazanma</p>
+                <p className="text-green-400 font-bold text-base">{statsBankolu.bankoWins}</p>
+              </div>
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">Bankodan Kaybetme</p>
+                <p className="text-red-400 font-bold text-base">{statsBankolu.bankoLosses}</p>
+              </div>
+            </div>
+            {statsBankolu.highestBankoPenalty !== null && (
+              <div className="bg-[#0f3460]/40 rounded-xl p-2.5">
+                <p className="text-[#718096] text-[10px]">En Yüksek Banko Cezası</p>
+                <p className="text-[#f5a623] font-bold">+{statsBankolu.highestBankoPenalty}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {stats101 && (
           <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-6">

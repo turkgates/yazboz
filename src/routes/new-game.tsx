@@ -19,7 +19,7 @@ export const Route = createFileRoute('/new-game')({
   component: NewGamePage,
 })
 
-type MainCategory = 'cezali' | 'sayili' | '101'
+type MainCategory = 'cezali' | 'sayili' | '101' | 'bankolu'
 
 interface PlayerSlot {
   name: string
@@ -96,7 +96,13 @@ function NewGamePage() {
 
     const gameId = uuidv4()
     const gameType: GameType =
-      category === 'sayili' ? 'sayili_okey' : category === '101' ? '101_okey' : 'cezali_okey'
+      category === 'sayili'
+        ? 'sayili_okey'
+        : category === '101'
+          ? '101_okey'
+          : category === 'bankolu'
+            ? 'bankolu_cezali_okey'
+            : 'cezali_okey'
 
     const teams = isEsli
       ? [[filledNames[0], filledNames[1]], [filledNames[2], filledNames[3]]] as string[][]
@@ -112,6 +118,7 @@ function NewGamePage() {
       players: filledNames,
       teams,
       katlamali: category === '101' ? yuzbirSettings.katlamali : undefined,
+      banko_history: category === 'bankolu' ? {} : undefined,
       settings: category === 'sayili'
         ? { ...sayiliSettings, winnersCount }
         : category === '101'
@@ -211,6 +218,32 @@ function NewGamePage() {
                 onClick={(e) => {
                   e.stopPropagation()
                   setRulesGameType('sayili_okey')
+                  setShowRules(true)
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCategoryChange('bankolu')}
+                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
+                  category === 'bankolu'
+                    ? 'bg-[#e94560]/10 border-[#e94560]'
+                    : 'bg-[#16213e] border-[#2d3748]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">💥</span>
+                  <div>
+                    <p className="text-white font-semibold">Bankolu Cezalı Okey</p>
+                    <p className="text-[#718096] text-xs">Banko zorunlu cezalı mod</p>
+                  </div>
+                </div>
+              </button>
+              <RulesHelpButton
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setRulesGameType('bankolu_cezali_okey')
                   setShowRules(true)
                 }}
               />
@@ -463,7 +496,7 @@ function NewGamePage() {
           </div>
         </div>
 
-        {(category === 'cezali' || category === '101') && (
+        {(category === 'cezali' || category === '101' || category === 'bankolu') && (
           <div className="mb-8">
             <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
               El Sayısı

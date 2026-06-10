@@ -1,4 +1,4 @@
-export type GameRulesKey = 'cezali_okey' | 'sayili_okey' | 'yuzbir_okey'
+export type GameRulesKey = 'cezali_okey' | 'sayili_okey' | 'yuzbir_okey' | 'bankolu_cezali_okey'
 
 export interface GameRuleSection {
   title: string
@@ -152,11 +152,63 @@ export const GAME_RULES: Record<GameRulesKey, GameRules> = {
       },
     ],
   },
+
+  bankolu_cezali_okey: {
+    title: 'Bankolu Cezalı Okey',
+    description: '11 elde en az 1 banko zorunlu. Bankocu biter ise çarpanlar 2 katına çıkar.',
+    sections: [
+      {
+        title: '💥 Banko Nedir?',
+        content: [
+          'Taşlar dağıtılmadan önce banko denir',
+          'Her oyuncu 11 elde en az 1 kez banko demek zorunda',
+          '10 el banko denmezse son el otomatik banko',
+          'Birden fazla oyuncu aynı elde banko diyebilir',
+        ],
+      },
+      {
+        title: '✅ Bankocu Biter',
+        content: [
+          'Normal: -100 (2 katı düşer)',
+          'Okey/Çiftten: -200',
+          'Çiftten+Okey: -400',
+          'Rakip cezası 2 katına çıkar',
+        ],
+      },
+      {
+        title: '❌ Bankocu Bitemez',
+        content: [
+          'Rakiplere kıyasla 2 katı ceza alır',
+          'Siyah normal el: puan × 10',
+        ],
+      },
+      {
+        title: '🃏 Sahte Okey',
+        content: [
+          'Sahte okey açan: +100 sabit ceza',
+          'Sahte okey açan biter: 0 puan',
+          'Sahte okey açan okey atar: -100',
+          'Sahte okey renk çarpanından bağımsız ×10',
+        ],
+      },
+      {
+        title: '🔥 Okeyi Yakma',
+        content: [
+          'Normal biter: +100',
+          'Okey atar: +200',
+          'Sahte okey + biri biter: +200',
+          'Bankocu okey atar: +400',
+          'Bankocu okey + yakan bankocu: +800',
+        ],
+      },
+    ],
+  },
 }
 
 export function toRulesKey(gameType: string): GameRulesKey | null {
   if (gameType === 'cezali_okey' || gameType === 'cezali_esli') return 'cezali_okey'
   if (gameType === 'sayili_okey') return 'sayili_okey'
   if (gameType === '101_okey') return 'yuzbir_okey'
+  if (gameType === 'bankolu_cezali_okey') return 'bankolu_cezali_okey'
   return null
 }

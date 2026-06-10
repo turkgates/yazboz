@@ -18,7 +18,8 @@ import { GameResultModal } from '@/components/GameResultModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
 import { computeGlobalStats, computeGlobal101Stats, type GlobalStatsSummary } from '@/lib/statsUtils'
-import { matchesGameFilter, getGameTypeLabel, is101Game, type GameTypeFilter } from '@/lib/gameTypes'
+import { matchesGameFilter, getGameTypeLabel, is101Game, isBankoluGame, type GameTypeFilter } from '@/lib/gameTypes'
+import { computeGlobalBankoluStats } from '@/lib/bankoluStatsUtils'
 import { GameTypeFilterTabs } from '@/components/GameTypeFilterTabs'
 import { TeamAvatars } from '@/components/TeamAvatars'
 import { computeEsliTeamStats } from '@/lib/teamStatsUtils'
@@ -115,6 +116,11 @@ function StatsPage() {
   const show101Stats = games.some((g) => is101Game(g))
   const stats101 = show101Stats
     ? computeGlobal101Stats(games, groupRoundsByGame(allRounds))
+    : null
+
+  const showBankoluStats = games.some((g) => isBankoluGame(g))
+  const statsBankolu = showBankoluStats
+    ? computeGlobalBankoluStats(games, groupRoundsByGame(allRounds))
     : null
 
   const playerByName = (name: string) =>
@@ -364,6 +370,28 @@ function StatsPage() {
                   </section>
                 )}
               </>
+            )}
+
+            {showBankoluStats && statsBankolu && (
+              <section>
+                <SectionTitle>💥 Bankolu Okey Rekorları</SectionTitle>
+                <div className="bg-[#16213e] border border-[#2d3748] rounded-xl overflow-hidden divide-y divide-[#2d3748]">
+                  {statsBankolu.mostBankos && (
+                    <RecordRow
+                      icon={<Zap size={18} />}
+                      title="En Fazla Banko"
+                      value={`${statsBankolu.mostBankos.player} — ${statsBankolu.mostBankos.count} kez`}
+                    />
+                  )}
+                  {statsBankolu.highestBankoPenalty && (
+                    <RecordRow
+                      icon={<Flame size={18} />}
+                      title="En Yüksek Banko Cezası"
+                      value={`${statsBankolu.highestBankoPenalty.player} — +${statsBankolu.highestBankoPenalty.score}`}
+                    />
+                  )}
+                </div>
+              </section>
             )}
 
             {show101Stats && stats101 && (
