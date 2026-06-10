@@ -17,7 +17,7 @@ import {
 import type { Friend, FriendRequest, Group, Profile } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
-import { Camera, Check, LogOut, Pencil, UserPlus, Users, X } from 'lucide-react'
+import { Camera, LogOut, Pencil, UserPlus, Users, X } from 'lucide-react'
 import { computePlayerProfileStats } from '@/lib/statsUtils'
 import { fetchPlayerGamesWithRounds, signOut } from '@/lib/supabase'
 
@@ -317,27 +317,43 @@ function ProfilePage() {
         {/* Friends tab */}
         {activeTab === 'friends' && (
           <div className="flex flex-col gap-4">
-            {/* Pending requests */}
             {pendingRequests.length > 0 && (
-              <div>
-                <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">Gelen İstekler</p>
-                <div className="flex flex-col gap-2">
-                  {pendingRequests.map((req) => (
-                    <div key={req.id} className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3">
-                      <PlayerAvatar name={req.sender_profile?.display_name ?? '?'} avatarUrl={req.sender_profile?.avatar_url} size={40} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-semibold truncate">{req.sender_profile?.display_name ?? '?'}</p>
-                        <p className="text-[#718096] text-xs">@{req.sender_profile?.username}</p>
-                      </div>
-                      <button onClick={() => handleRespond(req, true)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-green-600/20 text-green-400">
-                        <Check size={16} />
-                      </button>
-                      <button onClick={() => handleRespond(req, false)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-600/20 text-red-400">
-                        <X size={16} />
-                      </button>
+              <div className="mb-2">
+                <h3 className="text-[#f5a623] text-sm font-semibold mb-2">
+                  📬 Bekleyen İstekler ({pendingRequests.length})
+                </h3>
+                {pendingRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="flex items-center gap-3 p-3 bg-[#16213e] border border-[#2d3748] rounded-xl mb-2"
+                  >
+                    <PlayerAvatar
+                      name={req.sender_profile?.display_name ?? '?'}
+                      avatarUrl={req.sender_profile?.avatar_url}
+                      size={40}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">
+                        {req.sender_profile?.display_name}
+                      </p>
+                      <p className="text-[#718096] text-xs">
+                        @{req.sender_profile?.username}
+                      </p>
                     </div>
-                  ))}
-                </div>
+                    <button
+                      onClick={() => handleRespond(req, true)}
+                      className="px-3 py-1 bg-green-600 rounded-lg text-xs text-white font-semibold"
+                    >
+                      ✓ Kabul
+                    </button>
+                    <button
+                      onClick={() => handleRespond(req, false)}
+                      className="px-3 py-1 bg-red-700 rounded-lg text-xs text-white font-semibold"
+                    >
+                      ✗ Red
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -369,34 +385,53 @@ function ProfilePage() {
                     <p className="text-[#718096] text-xs">@{searchResult.username}</p>
                   </div>
                   <button onClick={() => handleSendRequest(searchResult.id!)} className="flex items-center gap-1 bg-[#e94560] text-white text-xs font-bold px-3 py-1.5 rounded-lg">
-                    <UserPlus size={12} /> Ekle
+                    <UserPlus size={12} /> İstek Gönder
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Friends list */}
             {friends.length > 0 && (
               <div>
-                <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">Arkadaşlarım ({friends.length})</p>
-                <div className="flex flex-col gap-2">
-                  {friends.map((f) => (
-                    <div key={f.id} className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3">
-                      <PlayerAvatar name={f.friend_profile?.display_name ?? '?'} avatarUrl={f.friend_profile?.avatar_url} size={40} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-semibold truncate">{f.friend_profile?.display_name}</p>
-                        <p className="text-[#718096] text-xs">@{f.friend_profile?.username}</p>
-                      </div>
-                      <button onClick={() => handleRemoveFriend(f.friend_id)} className="text-[#718096] hover:text-red-400 p-1">
-                        <X size={14} />
-                      </button>
+                <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">
+                  Arkadaşlarım ({friends.length})
+                </p>
+                {friends.map((friend) => (
+                  <div
+                    key={friend.id}
+                    className="flex items-center gap-3 p-3 border-b border-[#2d3748]"
+                  >
+                    <PlayerAvatar
+                      name={friend.friend_profile?.display_name ?? '?'}
+                      avatarUrl={friend.friend_profile?.avatar_url}
+                      size={40}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium truncate">
+                        {friend.friend_profile?.display_name}
+                      </p>
+                      <p className="text-[#718096] text-sm">
+                        @{friend.friend_profile?.username}
+                      </p>
                     </div>
-                  ))}
-                </div>
+                    <button
+                      onClick={() => navigate({ to: '/players' })}
+                      className="text-[#718096] hover:text-white px-2"
+                      title="Oyuncular sayfasında gör"
+                    >
+                      →
+                    </button>
+                    <button
+                      onClick={() => handleRemoveFriend(friend.friend_id)}
+                      className="text-[#718096] hover:text-red-400 p-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Sent requests */}
             {sentRequests.length > 0 && (
               <div>
                 <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">Gönderilen İstekler</p>

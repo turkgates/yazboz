@@ -80,11 +80,38 @@ export async function fetchGroupById(groupId: string) {
 }
 
 export async function fetchGroupMembers(groupId: string) {
-  return supabase
+  const { data: members, error } = await supabase
     .from('group_members')
-    .select('*, profiles(username, display_name, avatar_url)')
+    .select('id, role, joined_at, user_id')
     .eq('group_id', groupId)
-    .returns<GroupMember[]>()
+
+  if (error) {
+    console.error('Üye hatası:', error)
+    return { data: [] as GroupMember[], error }
+  }
+
+  const userIds = (members ?? []).map((m) => m.user_id)
+  if (!userIds.length) return { data: [] as GroupMember[], error: null }
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, display_name, username, avatar_url')
+    .in('id', userIds)
+
+  const profileMap = Object.fromEntries(
+    (profiles ?? []).map((p) => [p.id, p])
+  )
+
+  const result: GroupMember[] = (members ?? []).map((m) => ({
+    id: m.id,
+    group_id: groupId,
+    user_id: m.user_id,
+    role: m.role as 'admin' | 'member',
+    joined_at: m.joined_at,
+    profiles: profileMap[m.user_id] ?? undefined,
+  }))
+
+  return { data: result, error: null }
 }
 
 export async function fetchGroupGamesCount(groupId: string): Promise<number> {

@@ -49,6 +49,8 @@ function GroupDetailPage() {
       fetchGroupGamesCount(groupId),
     ])
 
+    if (membersRes.error) console.error('Üye hatası:', membersRes.error)
+
     setGroup(groupRes.data)
     setMembers(membersRes.data ?? [])
     setGamesCount(count)
@@ -146,32 +148,39 @@ function GroupDetailPage() {
           <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
             Üyeler ({members.length}/10)
           </p>
-          <div className="flex flex-col gap-2">
-            {members.map((m) => {
-              const name = m.profiles?.display_name ?? m.profiles?.username ?? 'Kullanıcı'
-              return (
+          <div className="flex flex-col gap-0 bg-[#16213e] border border-[#2d3748] rounded-xl overflow-hidden">
+            {members.length === 0 ? (
+              <p className="text-[#718096] text-sm text-center py-6">Henüz üye yok</p>
+            ) : (
+              members.map((member) => (
                 <motion.div
-                  key={m.id}
+                  key={member.id}
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3"
+                  className="flex items-center gap-3 p-3 border-b border-[#2d3748] last:border-b-0"
                 >
-                  <PlayerAvatar name={name} avatarUrl={m.profiles?.avatar_url} size={40} />
+                  <PlayerAvatar
+                    name={member.profiles?.display_name ?? '?'}
+                    avatarUrl={member.profiles?.avatar_url}
+                    size={40}
+                  />
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold truncate">{name}</p>
-                    {m.profiles?.username && (
-                      <p className="text-[#718096] text-xs">@{m.profiles.username}</p>
-                    )}
+                    <p className="text-white font-medium truncate">
+                      {member.profiles?.display_name ?? 'İsimsiz'}
+                    </p>
+                    <p className="text-[#718096] text-sm">
+                      @{member.profiles?.username ?? '-'}
+                    </p>
                   </div>
-                  {m.role === 'admin' && (
-                    <span className="text-[#f5a623] text-sm">👑</span>
+                  {member.role === 'admin' && (
+                    <span className="text-[#f5a623] text-sm whitespace-nowrap">👑 Admin</span>
                   )}
-                  {m.user_id === userId && (
+                  {member.user_id === userId && (
                     <span className="text-[#718096] text-[10px] bg-[#0f3460] rounded px-1.5 py-0.5">Sen</span>
                   )}
                 </motion.div>
-              )
-            })}
+              ))
+            )}
           </div>
         </div>
       </div>
