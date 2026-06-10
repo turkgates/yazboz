@@ -161,7 +161,21 @@ export function BankoluGameView({ gameId }: Props) {
     navigate({ to: '/game-over/$gameId', params: { gameId } })
   }
 
-  const colWidth = columns.length <= 2 ? 'flex-1' : columns.length === 3 ? 'flex-1' : 'w-[72px]'
+  const tableColumns = esli ? columns : currentGame_.players
+
+  const playerIdByName = (name: string) =>
+    players.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id
+
+  const formatScore = (score: number) => {
+    if (score === 0) return '-'
+    return score > 0 ? `+${score}` : String(score)
+  }
+
+  const scoreClass = (score: number) => {
+    if (score < 0) return 'text-green-400'
+    if (score > 0) return 'text-red-400'
+    return 'text-[#718096]'
+  }
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
@@ -174,86 +188,137 @@ export function BankoluGameView({ gameId }: Props) {
         onSettings={() => setShowSettings(true)}
       />
 
-      <div className="flex-1 overflow-x-auto px-2 py-3 max-w-lg mx-auto w-full pb-28">
-        <div className="min-w-max bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden">
-          {/* Column headers: avatar + name + banko (once) */}
-          <div className="flex border-b border-[#2d3748] bg-[#0f3460]">
-            <div className="w-10 shrink-0" />
-            {columns.map((entity) => {
-              const avatarPlayers = getAvatarPlayers(entity)
-              const alreadyUsedBanko = (bankoHistory[entity]?.length ?? 0) > 0
-              const forced = mustForceBanko(bankoHistory, entity, currentRound, totalRounds)
-              const isActive = currentBankos.includes(entity)
-              const disabled = (alreadyUsedBanko && !isActive) || (forced && isActive)
+      <div className="flex-1 overflow-auto px-2 py-3 max-w-lg mx-auto w-full pb-28">
+        <div className="bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden w-full">
+          <table className="w-full table-fixed border-collapse">
+            <colgroup>
+              <col className="w-10" />
+              {tableColumns.map((col) => (
+                <col key={col} />
+              ))}
+            </colgroup>
 
-              return (
-                <div key={entity} className={`${colWidth} py-3 px-1 flex flex-col items-center gap-1.5`}>
-                  <div className="flex justify-center">
-                    {avatarPlayers.map((p, i) => (
-                      <div key={p} style={{ marginLeft: i > 0 ? -10 : 0 }} className="relative">
-                        <PlayerAvatar name={p} avatarUrl={getAvatarUrl(p)} size={36} />
+            <thead>
+              <tr className="bg-[#0f3460] border-b border-[#2d3748]">
+                <th className="p-2" />
+                {tableColumns.map((entity) => {
+                  const avatarPlayers = getAvatarPlayers(entity)
+                  const alreadyUsedBanko = (bankoHistory[entity]?.length ?? 0) > 0
+                  const forced = mustForceBanko(bankoHistory, entity, currentRound, totalRounds)
+                  const isActive = currentBankos.includes(entity)
+                  const disabled = (alreadyUsedBanko && !isActive) || (forced && isActive)
+
+                  return (
+                    <th key={entity} className="text-center p-2 border-b border-[#2d3748]">
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex justify-center">
+                          {avatarPlayers.map((p, i) => (
+                            <div key={p} style={{ marginLeft: i > 0 ? -10 : 0 }} className="relative">
+                              <PlayerAvatar
+                                name={p}
+                                avatarUrl={getAvatarUrl(p)}
+                                size={40}
+                                onClick={
+                                  !esli && playerIdByName(p)
+                                    ? () => navigate({ to: '/player/$playerId', params: { playerId: playerIdByName(p)! } })
+                                    : undefined
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <span className="text-xs font-semibold text-white truncate max-w-full">
+                          {entity}
+                        </span>
+                        {!isFinished && (
+                          <button
+                            type="button"
+                            onClick={() => toggleBanko(entity)}
+                            disabled={disabled}
+                            title={forced ? 'Son el banko zorunlu!' : undefined}
+                            className={`rounded-lg px-3 py-1 text-xs font-bold transition-all ${
+                              isActive
+                                ? 'border-2 border-red-500 text-red-400 bg-red-500/10'
+                                : 'border border-[#4a5568] text-[#a0aec0]'
+                            } ${alreadyUsedBanko ? 'opacity-40 cursor-not-allowed' : 'hover:border-red-400'}`}
+                          >
+                            💥 BANKO
+                          </button>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  <p className="text-white text-[10px] font-semibold text-center truncate w-full">{entity}</p>
-                  {!isFinished && (
-                    <button
-                      type="button"
-                      onClick={() => toggleBanko(entity)}
-                      disabled={disabled}
-                      title={forced ? 'Son el banko zorunlu!' : undefined}
-                      className={`rounded-lg px-3 py-1 text-xs font-bold transition-all ${
-                        isActive
-                          ? 'border-2 border-red-500 text-red-400 bg-red-500/10'
-                          : 'border border-[#4a5568] text-[#a0aec0]'
-                      } ${alreadyUsedBanko ? 'opacity-40 cursor-not-allowed' : 'hover:border-red-400'}`}
-                    >
-                      💥 BANKO
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
 
-          {/* Round rows */}
-          {rounds.map((round, idx) => (
-            <div key={round.id} className={`flex border-b border-[#2d3748]/50 ${idx % 2 ? 'bg-[#0f3460]/20' : ''}`}>
-              <div className="w-10 shrink-0 flex flex-col items-center justify-center py-2">
-                <span className="text-[#718096] text-xs">{round.round_number}</span>
-                {(round.banko_players?.length ?? 0) > 0 && (
-                  <span className="text-red-400 text-[8px]">💥</span>
-                )}
-              </div>
-              {columns.map((entity) => {
-                const score = round.scores[entity] ?? 0
+            <tbody>
+              {rounds.map((round, idx) => (
+                <tr
+                  key={round.id}
+                  className={`border-b border-[#2d3748]/50 ${idx % 2 !== 0 ? 'bg-[#0f3460]/20' : ''}`}
+                >
+                  <td className="text-center p-2">
+                    <span className="text-[#718096] text-xs">{round.round_number}</span>
+                  </td>
+                  {tableColumns.map((entity) => {
+                    const score = round.scores[entity] ?? 0
+                    const isBanko = round.banko_players?.includes(entity)
+                    return (
+                      <td key={entity} className="text-center p-2">
+                        <span className={`text-xs font-medium ${scoreClass(score)}`}>
+                          {formatScore(score)}
+                        </span>
+                        {isBanko && <span className="ml-1 text-xs">💥</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+
+              {Array.from({ length: Math.max(0, totalRounds - rounds.length) }).map((_, idx) => {
+                const roundNum = rounds.length + idx + 1
+                const isCurrentRound = roundNum === currentRound
                 return (
-                  <div key={entity} className={`${colWidth} py-2 px-1 text-center`}>
-                    <span className={`text-xs font-medium ${score < 0 ? 'text-green-400' : score > 0 ? 'text-red-400' : 'text-[#718096]'}`}>
-                      {score === 0 ? '-' : score > 0 ? `+${score}` : score}
-                    </span>
-                  </div>
+                  <tr
+                    key={`empty-${idx}`}
+                    className={`border-b border-[#2d3748]/30 ${isCurrentRound ? 'bg-[#e94560]/5' : ''}`}
+                  >
+                    <td className="text-center p-2">
+                      <span className={`text-xs ${isCurrentRound ? 'text-[#e94560] font-bold' : 'text-[#2d3748]'}`}>
+                        {roundNum}
+                      </span>
+                    </td>
+                    {tableColumns.map((entity) => (
+                      <td key={entity} className="text-center p-2">
+                        {isCurrentRound ? (
+                          <span className="text-[#e94560]/40 text-xs">—</span>
+                        ) : (
+                          <span className="text-[#2d3748] text-xs">·</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
                 )
               })}
-            </div>
-          ))}
+            </tbody>
 
-          {/* Totals */}
-          <div className="flex bg-[#0f3460] border-t-2 border-[#2d3748]">
-            <div className="w-10 shrink-0 flex items-center justify-center">
-              <span className="text-[#718096] text-[10px] font-bold">Σ</span>
-            </div>
-            {columns.map((entity) => {
-              const total = totals[entity] ?? 0
-              return (
-                <div key={entity} className={`${colWidth} py-3 px-1 text-center`}>
-                  <p className={`text-sm font-bold ${total < 0 ? 'text-green-400' : total > 0 ? 'text-red-400' : 'text-white'}`}>
-                    {total}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
+            <tfoot>
+              <tr className="bg-[#0f3460] border-t-2 border-[#2d3748]">
+                <td className="p-2" />
+                {tableColumns.map((entity) => {
+                  const total = totals[entity] ?? 0
+                  return (
+                    <td key={entity} className="text-center p-2 font-bold">
+                      <span className={`text-sm ${scoreClass(total)}`}>
+                        {total}
+                      </span>
+                    </td>
+                  )
+                })}
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
 
