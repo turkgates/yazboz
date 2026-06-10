@@ -66,6 +66,7 @@ export const DEFAULT_SETTINGS: CezaliGameSettings = {
 export interface Game {
   id: string
   user_id: string
+  recorded_by?: string | null
   game_type: GameType
   game_subtype?: GameSubtype
   status: GameStatus
@@ -108,8 +109,46 @@ export interface RoundInput {
 export interface Profile {
   id: string
   username: string | null
+  display_name: string | null
+  avatar_url: string | null
+  bio: string | null
   winners_count?: number
   created_at: string
+}
+
+export interface Group {
+  id: string
+  name: string
+  owner_id: string
+  invite_code: string
+  created_at: string
+}
+
+export interface GroupMember {
+  id: string
+  group_id: string
+  user_id: string
+  role: 'admin' | 'member'
+  joined_at: string
+  profiles?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
+}
+
+export interface FriendRequest {
+  id: string
+  sender_id: string
+  receiver_id: string
+  status: 'pending' | 'accepted' | 'rejected'
+  created_at: string
+  sender_profile?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
+  receiver_profile?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
+}
+
+export interface Friend {
+  id: string
+  user_id: string
+  friend_id: string
+  created_at: string
+  friend_profile?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
 }
 
 export interface SavedPlayer {
@@ -117,6 +156,7 @@ export interface SavedPlayer {
   user_id: string
   name: string
   avatar_url: string | null
+  linked_user_id?: string | null
   created_at: string
 }
 

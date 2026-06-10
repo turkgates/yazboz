@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase, signIn, resetPassword } from '@/lib/supabase'
+import { supabase, signIn, resetPassword, fetchProfile } from '@/lib/supabase'
 import { Eye, EyeOff, Mail, Lock, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
 
 export const Route = createFileRoute('/auth')({
@@ -64,15 +64,28 @@ function AuthPage() {
           throw error
         }
 
-        console.log('Signup success:', data)
-        navigate({ to: '/home' })
+        if (data.user) {
+          const { data: profile } = await fetchProfile(data.user.id)
+          if (!profile?.username) {
+            navigate({ to: '/onboarding' })
+          } else {
+            navigate({ to: '/home' })
+          }
+        }
       } else {
-        const { error } = await signIn(email, password)
+        const { data: signInData, error } = await signIn(email, password)
         if (error) {
           console.error('Signin error:', error)
           throw error
         }
-        navigate({ to: '/home' })
+        if (signInData.user) {
+          const { data: profile } = await fetchProfile(signInData.user.id)
+          if (!profile?.username) {
+            navigate({ to: '/onboarding' })
+          } else {
+            navigate({ to: '/home' })
+          }
+        }
       }
     } catch (err: unknown) {
       console.error('Auth error:', err)

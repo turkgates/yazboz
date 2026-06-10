@@ -140,7 +140,7 @@ export async function fetchProfile(userId: string) {
 
 export async function updateProfile(
   userId: string,
-  updates: Partial<Pick<Profile, 'username' | 'winners_count'>>
+  updates: Partial<Pick<Profile, 'username' | 'display_name' | 'avatar_url' | 'bio' | 'winners_count'>>
 ) {
   return supabase
     .from('profiles')

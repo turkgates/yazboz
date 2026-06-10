@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
+import { addGameToGroups } from '@/lib/socialSupabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
 import {
   getGameRanking,
@@ -66,6 +67,12 @@ function GameOverPage() {
       if (!data.user) return
       const { data: players } = await fetchPlayers(data.user.id)
       setSavedPlayers(players ?? [])
+      // Save game to any groups where ≥2 members are playing
+      try {
+        if (currentGame) {
+          await addGameToGroups(gameId, currentGame.players, data.user.id)
+        }
+      } catch { /* non-critical */ }
     })
   }, [gameId])
 
@@ -323,6 +330,11 @@ function GameOverPage() {
           <Home size={20} />
           Ana Sayfaya Dön
         </button>
+        {currentGame.recorded_by && (
+          <p className="text-[#4a5568] text-xs text-center mt-1">
+            Bu oyunu sen kaydettin
+          </p>
+        )}
       </motion.div>
     </div>
   )

@@ -12,13 +12,18 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TrackerRouteImport } from './routes/tracker'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PlayersRouteImport } from './routes/players'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NewGameRouteImport } from './routes/new-game'
+import { Route as JoinGroupRouteImport } from './routes/join-group'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as GroupsRouteImport } from './routes/groups'
 import { Route as DiceRouteImport } from './routes/dice'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayerPlayerIdRouteImport } from './routes/player.$playerId'
+import { Route as GroupGroupIdRouteImport } from './routes/group.$groupId'
 import { Route as GameGameIdRouteImport } from './routes/game.$gameId'
 import { Route as GameOverGameIdRouteImport } from './routes/game-over.$gameId'
 
@@ -37,9 +42,19 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlayersRoute = PlayersRouteImport.update({
   id: '/players',
   path: '/players',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NewGameRoute = NewGameRouteImport.update({
@@ -47,9 +62,19 @@ const NewGameRoute = NewGameRouteImport.update({
   path: '/new-game',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JoinGroupRoute = JoinGroupRouteImport.update({
+  id: '/join-group',
+  path: '/join-group',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GroupsRoute = GroupsRouteImport.update({
+  id: '/groups',
+  path: '/groups',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiceRoute = DiceRouteImport.update({
@@ -72,6 +97,11 @@ const PlayerPlayerIdRoute = PlayerPlayerIdRouteImport.update({
   path: '/player/$playerId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GroupGroupIdRoute = GroupGroupIdRouteImport.update({
+  id: '/group/$groupId',
+  path: '/group/$groupId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GameGameIdRoute = GameGameIdRouteImport.update({
   id: '/game/$gameId',
   path: '/game/$gameId',
@@ -87,28 +117,38 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dice': typeof DiceRoute
+  '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
+  '/join-group': typeof JoinGroupRoute
   '/new-game': typeof NewGameRoute
+  '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
+  '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
+  '/group/$groupId': typeof GroupGroupIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dice': typeof DiceRoute
+  '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
+  '/join-group': typeof JoinGroupRoute
   '/new-game': typeof NewGameRoute
+  '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
+  '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
+  '/group/$groupId': typeof GroupGroupIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
 export interface FileRoutesById {
@@ -116,14 +156,19 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dice': typeof DiceRoute
+  '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
+  '/join-group': typeof JoinGroupRoute
   '/new-game': typeof NewGameRoute
+  '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
+  '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
+  '/group/$groupId': typeof GroupGroupIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
 export interface FileRouteTypes {
@@ -132,42 +177,57 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dice'
+    | '/groups'
     | '/home'
+    | '/join-group'
     | '/new-game'
+    | '/onboarding'
     | '/players'
+    | '/profile'
     | '/settings'
     | '/stats'
     | '/tracker'
     | '/game-over/$gameId'
     | '/game/$gameId'
+    | '/group/$groupId'
     | '/player/$playerId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/dice'
+    | '/groups'
     | '/home'
+    | '/join-group'
     | '/new-game'
+    | '/onboarding'
     | '/players'
+    | '/profile'
     | '/settings'
     | '/stats'
     | '/tracker'
     | '/game-over/$gameId'
     | '/game/$gameId'
+    | '/group/$groupId'
     | '/player/$playerId'
   id:
     | '__root__'
     | '/'
     | '/auth'
     | '/dice'
+    | '/groups'
     | '/home'
+    | '/join-group'
     | '/new-game'
+    | '/onboarding'
     | '/players'
+    | '/profile'
     | '/settings'
     | '/stats'
     | '/tracker'
     | '/game-over/$gameId'
     | '/game/$gameId'
+    | '/group/$groupId'
     | '/player/$playerId'
   fileRoutesById: FileRoutesById
 }
@@ -175,14 +235,19 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   DiceRoute: typeof DiceRoute
+  GroupsRoute: typeof GroupsRoute
   HomeRoute: typeof HomeRoute
+  JoinGroupRoute: typeof JoinGroupRoute
   NewGameRoute: typeof NewGameRoute
+  OnboardingRoute: typeof OnboardingRoute
   PlayersRoute: typeof PlayersRoute
+  ProfileRoute: typeof ProfileRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
   TrackerRoute: typeof TrackerRoute
   GameOverGameIdRoute: typeof GameOverGameIdRoute
   GameGameIdRoute: typeof GameGameIdRoute
+  GroupGroupIdRoute: typeof GroupGroupIdRoute
   PlayerPlayerIdRoute: typeof PlayerPlayerIdRoute
 }
 
@@ -209,11 +274,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/players': {
       id: '/players'
       path: '/players'
       fullPath: '/players'
       preLoaderRoute: typeof PlayersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/new-game': {
@@ -223,11 +302,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NewGameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/join-group': {
+      id: '/join-group'
+      path: '/join-group'
+      fullPath: '/join-group'
+      preLoaderRoute: typeof JoinGroupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/home': {
       id: '/home'
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/groups': {
+      id: '/groups'
+      path: '/groups'
+      fullPath: '/groups'
+      preLoaderRoute: typeof GroupsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dice': {
@@ -258,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlayerPlayerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/group/$groupId': {
+      id: '/group/$groupId'
+      path: '/group/$groupId'
+      fullPath: '/group/$groupId'
+      preLoaderRoute: typeof GroupGroupIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/game/$gameId': {
       id: '/game/$gameId'
       path: '/game/$gameId'
@@ -279,14 +379,19 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   DiceRoute: DiceRoute,
+  GroupsRoute: GroupsRoute,
   HomeRoute: HomeRoute,
+  JoinGroupRoute: JoinGroupRoute,
   NewGameRoute: NewGameRoute,
+  OnboardingRoute: OnboardingRoute,
   PlayersRoute: PlayersRoute,
+  ProfileRoute: ProfileRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
   TrackerRoute: TrackerRoute,
   GameOverGameIdRoute: GameOverGameIdRoute,
   GameGameIdRoute: GameGameIdRoute,
+  GroupGroupIdRoute: GroupGroupIdRoute,
   PlayerPlayerIdRoute: PlayerPlayerIdRoute,
 }
 export const routeTree = rootRouteImport

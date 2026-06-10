@@ -2,10 +2,11 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, createGame, searchPlayersByName, createPlayer } from '@/lib/supabase'
+import { fetchPlayerSuggestionsWithSocial } from '@/lib/socialSupabase'
 import { useSettingsStore, useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, Plus, Minus, User, Play } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SavedPlayer, SayiliOkeySettings } from '@/types'
+import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SayiliOkeySettings } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { DEFAULT_101_SETTINGS, DEFAULT_SAYILI_SETTINGS } from '@/lib/gameTypes'
 import { GameRulesModal, RulesHelpButton } from '@/components/GameRulesModal'
@@ -111,6 +112,7 @@ function NewGamePage() {
     const gameData = {
       id: gameId,
       user_id: user.id,
+      recorded_by: user.id,
       game_type: gameType,
       game_subtype: subtype,
       status: 'active' as const,
@@ -591,6 +593,15 @@ function NumberStepper({
   )
 }
 
+interface SuggestionItem {
+  id?: string
+  name: string
+  avatar_url?: string | null
+  isGroupMember?: boolean
+  groupName?: string
+  isFriend?: boolean
+}
+
 function PlayerAutocompleteInput({
   index,
   value,
@@ -604,7 +615,7 @@ function PlayerAutocompleteInput({
   userId: string | null
   onChange: (name: string, playerId: string | null) => void
 }) {
-  const [suggestions, setSuggestions] = useState<Pick<SavedPlayer, 'id' | 'name' | 'avatar_url'>[]>([])
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -621,12 +632,23 @@ function PlayerAutocompleteInput({
   }, [])
 
   const search = (query: string) => {
-    if (!userId || !query.trim()) {
-      setSuggestions([])
-      return
-    }
-    searchPlayersByName(userId, query.trim(), 5).then(({ data }) => {
-      setSuggestions(data ?? [])
+    if (!userId || !query.trim()) { setSuggestions([]); return }
+
+    // Use social suggestions that include group tags
+    fetchPlayerSuggestionsWithSocial(userId, query.trim()).then((results) => {
+      if (results.length > 0) {
+        setSuggestions(results.map((r) => ({
+          name: r.name,
+          avatar_url: r.avatarUrl,
+          isGroupMember: r.isGroupMember,
+          groupName: r.groupName,
+        })))
+      } else {
+        // fallback to plain search
+        searchPlayersByName(userId, query.trim(), 5).then(({ data }) => {
+          setSuggestions((data ?? []).map((p) => ({ id: p.id, name: p.name, avatar_url: p.avatar_url })))
+        })
+      }
     })
   }
 
@@ -637,8 +659,8 @@ function PlayerAutocompleteInput({
     debounceRef.current = setTimeout(() => search(text), 200)
   }
 
-  const handleSelect = (player: Pick<SavedPlayer, 'id' | 'name' | 'avatar_url'>) => {
-    onChange(player.name, player.id)
+  const handleSelect = (s: SuggestionItem) => {
+    onChange(s.name, s.id ?? null)
     setOpen(false)
     setSuggestions([])
   }
@@ -647,26 +669,14 @@ function PlayerAutocompleteInput({
     if (!userId || !value.trim() || creating) return
     setCreating(true)
     const newId = uuidv4()
-    const { data, error } = await createPlayer({
-      id: newId,
-      user_id: userId,
-      name: value.trim(),
-      avatar_url: null,
-    })
+    const { data, error } = await createPlayer({ id: newId, user_id: userId, name: value.trim(), avatar_url: null })
     setCreating(false)
-    if (data) {
-      onChange(data.name, data.id)
-      setOpen(false)
-      setSuggestions([])
-    } else {
-      console.error('Create player error:', error)
-    }
+    if (data) { onChange(data.name, data.id); setOpen(false); setSuggestions([]) }
+    else console.error('Create player error:', error)
   }
 
   const trimmed = value.trim()
-  const hasExactMatch = suggestions.some(
-    (s) => s.name.toLowerCase() === trimmed.toLowerCase()
-  )
+  const hasExactMatch = suggestions.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())
   const showCreateOption = trimmed.length > 0 && !hasExactMatch
 
   return (
@@ -677,26 +687,30 @@ function PlayerAutocompleteInput({
         placeholder={`Oyuncu ${index + 1}`}
         value={value}
         onChange={(e) => handleInputChange(e.target.value)}
-        onFocus={() => {
-          setOpen(true)
-          if (value.trim()) search(value)
-        }}
+        onFocus={() => { setOpen(true); if (value.trim()) search(value) }}
         maxLength={20}
         className="w-full bg-[#16213e] border border-[#2d3748] rounded-xl py-3 pl-10 pr-4 text-white placeholder-[#718096] focus:outline-none focus:border-[#e94560] transition-colors text-sm"
       />
       {open && trimmed.length > 0 && (
         <div className="absolute left-0 right-0 top-full mt-1 bg-[#16213e] border border-[#2d3748] rounded-xl overflow-hidden z-20 shadow-xl">
-          {suggestions.map((player) => (
+          {suggestions.map((s, i) => (
             <button
-              key={player.id}
+              key={s.id ?? `${s.name}-${i}`}
               type="button"
-              onClick={() => handleSelect(player)}
+              onClick={() => handleSelect(s)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#0f3460] transition-colors ${
-                playerId === player.id ? 'bg-[#e94560]/10' : ''
+                playerId && playerId === s.id ? 'bg-[#e94560]/10' : ''
               }`}
             >
-              <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={28} />
-              <span className="text-white text-sm">{player.name}</span>
+              <PlayerAvatar name={s.name} avatarUrl={s.avatar_url} size={28} />
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm">{s.name}</p>
+                {s.isGroupMember && s.groupName && (
+                  <p className="text-[#718096] text-[10px] flex items-center gap-1">
+                    👥 {s.groupName}
+                  </p>
+                )}
+              </div>
             </button>
           ))}
           {showCreateOption && (

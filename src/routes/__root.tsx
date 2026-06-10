@@ -12,7 +12,11 @@ function RootLayout() {
   const [_user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const hideBottomNav = pathname.startsWith('/game/') || pathname === '/auth' || pathname === '/'
+  const hideBottomNav =
+    pathname.startsWith('/game/') ||
+    pathname === '/auth' ||
+    pathname === '/' ||
+    pathname === '/onboarding'
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
