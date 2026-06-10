@@ -68,13 +68,15 @@ function OnboardingPage() {
     setSaving(true)
     setError('')
     try {
-      await upsertProfile(userId, {
+      const { error } = await upsertProfile(userId, {
         username,
         display_name: displayName.trim(),
         avatar_url: avatarUrl ?? undefined,
       })
+      if (error) throw error
       navigate({ to: '/home' })
     } catch (err: unknown) {
+      console.error('Onboarding kayıt hatası:', err)
       setError(err instanceof Error ? err.message : 'Kayıt başarısız')
     } finally {
       setSaving(false)

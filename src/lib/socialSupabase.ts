@@ -1,7 +1,20 @@
 import { supabase } from '@/lib/supabase'
 import type { Friend, FriendRequest, Group, GroupMember, Profile, SavedPlayer } from '@/types'
 
+export function getSupabaseErrorMessage(err: unknown, fallback = 'Bir hata oluştu'): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    const msg = (err as { message: unknown }).message
+    if (typeof msg === 'string' && msg.trim()) return msg
+  }
+  return fallback
+}
+
 // ── Profiles ──────────────────────────────────────────────────────────────
+
+function normalizeUsername(input: string): string {
+  return input.trim().replace(/^@/, '').toLowerCase()
+}
 
 export async function fetchUserProfile(userId: string) {
   return supabase
@@ -15,27 +28,81 @@ export async function upsertProfile(
   userId: string,
   data: Partial<Pick<Profile, 'username' | 'display_name' | 'avatar_url' | 'bio'>>
 ) {
-  return supabase
+  const payload: Record<string, unknown> = { id: userId, ...data }
+  if (typeof payload.username === 'string') {
+    payload.username = normalizeUsername(payload.username as string)
+  }
+
+  const { data: profile, error } = await supabase
     .from('profiles')
-    .upsert({ id: userId, ...data } as Record<string, unknown>)
+    .upsert(payload, { onConflict: 'id' })
     .select()
     .single<Profile>()
+
+  if (error) {
+    const { data: updated, error: updateError } = await supabase
+      .from('profiles')
+      .update(data as Record<string, unknown>)
+      .eq('id', userId)
+      .select()
+      .single<Profile>()
+
+    if (updateError) {
+      console.error('Profil kaydetme hatası:', updateError)
+      return { data: null, error: updateError }
+    }
+    return { data: updated, error: null }
+  }
+
+  return { data: profile, error: null }
 }
 
-export async function checkUsernameAvailable(username: string): Promise<boolean> {
-  const { data } = await supabase
+export async function checkUsernameAvailable(
+  username: string,
+  excludeUserId?: string
+): Promise<boolean> {
+  const normalized = normalizeUsername(username)
+  if (!normalized) return false
+
+  const { data, error } = await supabase.rpc('check_username_available', {
+    p_username: normalized,
+    p_exclude_user_id: excludeUserId ?? null,
+  })
+
+  if (!error && typeof data === 'boolean') return data
+
+  const { data: existing } = await supabase
     .from('profiles')
-    .select('username')
-    .eq('username', username)
+    .select('id')
+    .ilike('username', normalized)
     .maybeSingle()
-  return !data
+
+  if (!existing) return true
+  if (excludeUserId && existing.id === excludeUserId) return true
+  return false
 }
 
 export async function searchProfileByUsername(username: string) {
+  const normalized = normalizeUsername(username)
+  if (!normalized) return { data: null, error: null }
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    'search_profile_by_username',
+    { p_username: normalized }
+  )
+
+  if (!rpcError) {
+    const row = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as
+      | Pick<Profile, 'id' | 'username' | 'display_name' | 'avatar_url'>
+      | undefined
+    return { data: row ?? null, error: null }
+  }
+
+  console.error('Kullanıcı arama RPC hatası:', rpcError)
   return supabase
     .from('profiles')
     .select('id, username, display_name, avatar_url')
-    .eq('username', username)
+    .ilike('username', normalized)
     .maybeSingle<Pick<Profile, 'id' | 'username' | 'display_name' | 'avatar_url'>>()
 }
 
@@ -316,29 +383,85 @@ export async function addGameToGroups(gameId: string, players: string[], current
 // ── Friends ───────────────────────────────────────────────────────────────
 
 export async function fetchFriends(userId: string) {
-  return supabase
+  const { data: rows, error } = await supabase
     .from('friends')
-    .select('*, friend_profile:profiles!friends_friend_id_fkey(username, display_name, avatar_url)')
+    .select('id, user_id, friend_id, created_at')
     .eq('user_id', userId)
-    .returns<Friend[]>()
+
+  if (error) return { data: null, error }
+
+  const friendIds = (rows ?? []).map((r) => r.friend_id)
+  if (!friendIds.length) return { data: [] as Friend[], error: null }
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', friendIds)
+
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+
+  const data: Friend[] = (rows ?? []).map((r) => ({
+    ...r,
+    friend_profile: profileMap[r.friend_id],
+  }))
+
+  return { data, error: null }
 }
 
 export async function fetchPendingRequests(userId: string) {
-  return supabase
+  const { data: rows, error } = await supabase
     .from('friend_requests')
-    .select('*, sender_profile:profiles!friend_requests_sender_id_fkey(username, display_name, avatar_url)')
+    .select('id, sender_id, receiver_id, status, created_at')
     .eq('receiver_id', userId)
     .eq('status', 'pending')
-    .returns<FriendRequest[]>()
+
+  if (error) return { data: null, error }
+
+  const senderIds = (rows ?? []).map((r) => r.sender_id)
+  if (!senderIds.length) return { data: [] as FriendRequest[], error: null }
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', senderIds)
+
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+
+  const data: FriendRequest[] = (rows ?? []).map((r) => ({
+    ...r,
+    status: r.status as FriendRequest['status'],
+    sender_profile: profileMap[r.sender_id],
+  }))
+
+  return { data, error: null }
 }
 
 export async function fetchSentRequests(userId: string) {
-  return supabase
+  const { data: rows, error } = await supabase
     .from('friend_requests')
-    .select('*, receiver_profile:profiles!friend_requests_receiver_id_fkey(username, display_name, avatar_url)')
+    .select('id, sender_id, receiver_id, status, created_at')
     .eq('sender_id', userId)
     .eq('status', 'pending')
-    .returns<FriendRequest[]>()
+
+  if (error) return { data: null, error }
+
+  const receiverIds = (rows ?? []).map((r) => r.receiver_id)
+  if (!receiverIds.length) return { data: [] as FriendRequest[], error: null }
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', receiverIds)
+
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+
+  const data: FriendRequest[] = (rows ?? []).map((r) => ({
+    ...r,
+    status: r.status as FriendRequest['status'],
+    receiver_profile: profileMap[r.receiver_id],
+  }))
+
+  return { data, error: null }
 }
 
 export async function countPendingRequests(userId: string): Promise<number> {
@@ -350,36 +473,67 @@ export async function countPendingRequests(userId: string): Promise<number> {
   return count ?? 0
 }
 
-export async function sendFriendRequest(senderId: string, receiverId: string) {
-  return supabase.from('friend_requests').insert({
-    sender_id: senderId,
-    receiver_id: receiverId,
-    status: 'pending',
+export async function sendFriendRequest(_senderId: string, receiverId: string) {
+  const { data: rpcId, error: rpcError } = await supabase.rpc('send_friend_request', {
+    p_receiver_id: receiverId,
+  })
+
+  if (!rpcError) return { data: rpcId, error: null }
+
+  console.error('send_friend_request RPC hatası:', rpcError)
+
+  const rpcMissing =
+    rpcError.code === 'PGRST202' ||
+    rpcError.message?.includes('Could not find the function')
+
+  if (rpcMissing) {
+    throw new Error(
+      'Arkadaşlık isteği sunucu fonksiyonu bulunamadı. Supabase\'de 014_fix_friend_request_insert_rls.sql migration\'ını çalıştırın.'
+    )
+  }
+
+  throw rpcError
+}
+
+export async function respondToFriendRequest(requestId: string, accept: boolean) {
+  const { data, error } = await supabase.rpc('respond_friend_request', {
+    p_request_id: requestId,
+    p_accept: accept,
+  })
+
+  if (error) {
+    console.error('respond_friend_request RPC hatası:', error)
+    throw error
+  }
+
+  return data as
+    | { accepted: true; sender_id: string; receiver_id: string }
+    | { accepted: false }
+}
+
+export async function areFriends(userId: string, otherId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('friends')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('friend_id', otherId)
+    .maybeSingle()
+  return !!data
+}
+
+export function findMatchingLocalPlayers(
+  localPlayers: { id: string; name: string }[],
+  friendDisplayName: string | null | undefined
+) {
+  if (!friendDisplayName?.trim()) return []
+  const normalized = friendDisplayName.trim().toLowerCase()
+  return localPlayers.filter((p) => {
+    const name = p.name.trim().toLowerCase()
+    return name === normalized || name.includes(normalized) || normalized.includes(name)
   })
 }
 
-export async function respondToFriendRequest(
-  requestId: string,
-  accept: boolean,
-  senderId: string,
-  receiverId: string
-) {
-  await supabase
-    .from('friend_requests')
-    .update({ status: accept ? 'accepted' : 'rejected' })
-    .eq('id', requestId)
-
-  if (accept) {
-    await supabase.from('friends').insert([
-      { user_id: senderId, friend_id: receiverId },
-      { user_id: receiverId, friend_id: senderId },
-    ])
-    await addFriendToPlayersList(senderId, receiverId)
-    await addFriendToPlayersList(receiverId, senderId)
-  }
-}
-
-async function addFriendToPlayersList(currentUserId: string, friendUserId: string) {
+export async function createLinkedFriendPlayer(currentUserId: string, friendUserId: string) {
   const { data: profile } = await supabase
     .from('profiles')
     .select('display_name, avatar_url')
@@ -394,19 +548,48 @@ async function addFriendToPlayersList(currentUserId: string, friendUserId: strin
     .eq('linked_user_id', friendUserId)
     .maybeSingle()
 
-  if (!existing) {
-    await supabase.from('players').insert({
-      user_id: currentUserId,
-      name: profile.display_name,
-      avatar_url: profile.avatar_url ?? null,
-      linked_user_id: friendUserId,
-    } as Partial<SavedPlayer>)
-  }
+  if (existing) return
+
+  const { error } = await supabase.from('players').insert({
+    user_id: currentUserId,
+    name: profile.display_name,
+    avatar_url: profile.avatar_url ?? null,
+    linked_user_id: friendUserId,
+  } as Partial<SavedPlayer>)
+  if (error) throw error
 }
 
-export async function removeFriend(userId: string, friendId: string) {
-  await supabase.from('friends').delete().eq('user_id', userId).eq('friend_id', friendId)
-  await supabase.from('friends').delete().eq('user_id', friendId).eq('friend_id', userId)
+export async function linkLocalPlayerToFriend(
+  playerId: string,
+  friendUserId: string,
+  userId: string
+) {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('avatar_url')
+    .eq('id', friendUserId)
+    .maybeSingle<Pick<Profile, 'avatar_url'>>()
+
+  const { error } = await supabase
+    .from('players')
+    .update({
+      linked_user_id: friendUserId,
+      avatar_url: profile?.avatar_url ?? null,
+    })
+    .eq('id', playerId)
+    .eq('user_id', userId)
+
+  if (error) throw error
+}
+
+export async function removeFriend(friendId: string) {
+  const { error } = await supabase.rpc('remove_friend', {
+    p_friend_id: friendId,
+  })
+  if (error) {
+    console.error('remove_friend RPC hatası:', error)
+    throw error
+  }
 }
 
 // ── Group member suggestions for new-game ────────────────────────────────

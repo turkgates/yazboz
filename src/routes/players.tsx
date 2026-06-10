@@ -9,7 +9,7 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { supabase, deletePlayer } from '@/lib/supabase'
-import { searchProfileByUsername, sendFriendRequest } from '@/lib/socialSupabase'
+import { searchProfileByUsername, sendFriendRequest, getSupabaseErrorMessage } from '@/lib/socialSupabase'
 import type { SavedPlayer } from '@/types'
 import { Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
@@ -109,7 +109,11 @@ function PlayersPage() {
     if (!searchQuery.trim()) return
     setSearchLoading(true)
     setFriendError('')
-    const { data } = await searchProfileByUsername(searchQuery.trim().replace(/^@/, ''))
+    const { data, error } = await searchProfileByUsername(searchQuery)
+    if (error) {
+      console.error('Arkadaş arama hatası:', error)
+      setFriendError('Arama başarısız')
+    }
     setSearchResult(data ?? 'not_found')
     setSearchLoading(false)
   }
@@ -123,13 +127,12 @@ function PlayersPage() {
         setFriendError('Kendine istek gönderemezsin')
         return
       }
-      const { error } = await sendFriendRequest(userId, receiverId)
-      if (error) throw error
+      await sendFriendRequest(userId, receiverId)
       setShowFriendModal(false)
       setSearchQuery('')
       setSearchResult(undefined)
     } catch (err: unknown) {
-      setFriendError(err instanceof Error ? err.message : 'İstek gönderilemedi')
+      setFriendError(getSupabaseErrorMessage(err, 'İstek gönderilemedi'))
     } finally {
       setSendingRequest(false)
     }

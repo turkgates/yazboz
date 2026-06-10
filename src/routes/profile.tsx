@@ -13,6 +13,11 @@ import {
   removeFriend,
   searchProfileByUsername,
   fetchMyGroups,
+  getSupabaseErrorMessage,
+  areFriends,
+  findMatchingLocalPlayers,
+  createLinkedFriendPlayer,
+  linkLocalPlayerToFriend,
 } from '@/lib/socialSupabase'
 import type { Friend, FriendRequest, Group, Profile } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
@@ -48,6 +53,7 @@ function ProfilePage() {
 
   // Friends
   const [friends, setFriends] = useState<Friend[]>([])
+  const [localPlayers, setLocalPlayers] = useState<{ id: string; name: string; avatar_url: string | null }[]>([])
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([])
   const [sentRequests, setSentRequests] = useState<FriendRequest[]>([])
 
@@ -56,12 +62,28 @@ function ProfilePage() {
   const [editName, setEditName] = useState('')
   const [editBio, setEditBio] = useState('')
   const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
 
   // Add friend search
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResult, setSearchResult] = useState<Pick<Profile, 'id' | 'username' | 'display_name' | 'avatar_url'> | null | 'not_found'>()
   const [searchLoading, setSearchLoading] = useState(false)
   const [addError, setAddError] = useState('')
+  const [sendingRequest, setSendingRequest] = useState(false)
+  const [searchMeta, setSearchMeta] = useState<{ isFriend: boolean; pendingSent: boolean }>({
+    isFriend: false,
+    pendingSent: false,
+  })
+  const [mergePrompt, setMergePrompt] = useState<{
+    req: FriendRequest
+    matchingPlayers: { id: string; name: string }[]
+  } | null>(null)
+  const [confirmRemoveFriend, setConfirmRemoveFriend] = useState<{
+    friendId: string
+    name: string
+  } | null>(null)
+  const [responding, setResponding] = useState(false)
+  const [removingFriend, setRemovingFriend] = useState(false)
 
   useEffect(() => {
     loadAll()
@@ -85,16 +107,28 @@ function ProfilePage() {
       setStats(computePlayerProfileStats(displayName, games, roundsByGame))
     }
 
-    const [groupsRes, friendsRes, pendingRes, sentRes] = await Promise.all([
+    const [groupsRes, friendsRes, pendingRes, sentRes, playersRes] = await Promise.all([
       fetchMyGroups(user.id),
       fetchFriends(user.id),
       fetchPendingRequests(user.id),
       fetchSentRequests(user.id),
+      supabase
+        .from('players')
+        .select('id, name, avatar_url, linked_user_id')
+        .eq('user_id', user.id)
+        .order('name'),
     ])
     setGroups(groupsRes.data ?? [])
     setFriends(friendsRes.data ?? [])
     setPendingRequests(pendingRes.data ?? [])
     setSentRequests(sentRes.data ?? [])
+    setLocalPlayers(
+      (playersRes.data ?? []).filter((p) => !p.linked_user_id).map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatar_url: p.avatar_url,
+      }))
+    )
   }
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,46 +144,185 @@ function ProfilePage() {
   const handleSaveEdit = async () => {
     if (!editName.trim()) return
     setEditSaving(true)
-    await upsertProfile(userId, { display_name: editName.trim(), bio: editBio.trim() || undefined })
+    setEditError('')
+    const { error } = await upsertProfile(userId, {
+      display_name: editName.trim(),
+      bio: editBio.trim() || undefined,
+    })
+    if (error) {
+      console.error('Profil güncelleme hatası:', error)
+      setEditError(error.message || 'Kaydedilemedi')
+      setEditSaving(false)
+      return
+    }
     setProfile((p) => p ? { ...p, display_name: editName.trim(), bio: editBio.trim() || null } : p)
     setEditMode(false)
     setEditSaving(false)
+  }
+
+  const refreshFriendData = async (uid: string) => {
+    const [friendsRes, pendingRes, sentRes, playersRes] = await Promise.all([
+      fetchFriends(uid),
+      fetchPendingRequests(uid),
+      fetchSentRequests(uid),
+      supabase
+        .from('players')
+        .select('id, name, avatar_url, linked_user_id')
+        .eq('user_id', uid)
+        .order('name'),
+    ])
+    setFriends(friendsRes.data ?? [])
+    setPendingRequests(pendingRes.data ?? [])
+    setSentRequests(sentRes.data ?? [])
+    setLocalPlayers(
+      (playersRes.data ?? []).filter((p) => !p.linked_user_id).map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatar_url: p.avatar_url,
+      }))
+    )
   }
 
   const handleSearchUser = async () => {
     if (!searchQuery.trim()) return
     setSearchLoading(true)
     setAddError('')
-    const { data } = await searchProfileByUsername(searchQuery.trim())
+    setSearchMeta({ isFriend: false, pendingSent: false })
+    const { data, error } = await searchProfileByUsername(searchQuery)
+    if (error) {
+      console.error('Arkadaş arama hatası:', error)
+      setAddError('Arama başarısız')
+    }
+    if (data?.id && userId) {
+      const isFriend =
+        friends.some((f) => f.friend_id === data.id) ||
+        (await areFriends(userId, data.id))
+      const pendingSent = sentRequests.some((r) => r.receiver_id === data.id)
+      setSearchMeta({ isFriend, pendingSent })
+    }
     setSearchResult(data ?? 'not_found')
     setSearchLoading(false)
   }
 
   const handleSendRequest = async (receiverId: string) => {
+    if (!receiverId) {
+      setAddError('Geçersiz kullanıcı')
+      return
+    }
     setAddError('')
-    const already = [...friends, ...sentRequests].some((f) => {
-      if ('friend_id' in f) return f.friend_id === receiverId
-      if ('receiver_id' in f) return (f as FriendRequest).receiver_id === receiverId
-      return false
-    })
-    if (already) { setAddError('Zaten arkadaşsınız veya istek gönderildi'); return }
-    await sendFriendRequest(userId, receiverId)
-    const sentRes = await fetchSentRequests(userId)
-    setSentRequests(sentRes.data ?? [])
-    setSearchResult(undefined)
-    setSearchQuery('')
+    setSendingRequest(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const uid = user?.id
+      if (!uid) {
+        setAddError('Oturum bulunamadı')
+        return
+      }
+      if (receiverId === uid) {
+        setAddError('Kendine istek gönderemezsin')
+        return
+      }
+
+      const alreadyFriend = await areFriends(uid, receiverId)
+      if (alreadyFriend) {
+        setAddError('Zaten arkadaşsınız')
+        setSearchMeta({ isFriend: true, pendingSent: false })
+        return
+      }
+
+      const already = [...friends, ...sentRequests].some((f) => {
+        if ('friend_id' in f) return f.friend_id === receiverId
+        if ('receiver_id' in f) return (f as FriendRequest).receiver_id === receiverId
+        return false
+      })
+      if (already) {
+        setAddError('Zaten arkadaşsınız veya istek gönderildi')
+        return
+      }
+
+      await sendFriendRequest(uid, receiverId)
+
+      const [sentRes, friendsRes] = await Promise.all([
+        fetchSentRequests(uid),
+        fetchFriends(uid),
+      ])
+      if (sentRes.error) throw sentRes.error
+      setSentRequests(sentRes.data ?? [])
+      if (friendsRes.data) setFriends(friendsRes.data)
+      setSearchMeta({ isFriend: false, pendingSent: true })
+      setSearchResult(undefined)
+      setSearchQuery('')
+    } catch (err: unknown) {
+      console.error('İstek gönderme hatası:', err)
+      const message = getSupabaseErrorMessage(err, 'İstek gönderilemedi')
+      if (message.includes('duplicate') || message.includes('unique')) {
+        setAddError('Bu kullanıcıya zaten istek gönderdin')
+      } else {
+        setAddError(message)
+      }
+    } finally {
+      setSendingRequest(false)
+    }
+  }
+
+  const completeFriendAccept = async (req: FriendRequest, mergePlayerId?: string) => {
+    setResponding(true)
+    setAddError('')
+    try {
+      const result = await respondToFriendRequest(req.id, true)
+      if (result.accepted && userId) {
+        if (mergePlayerId) {
+          await linkLocalPlayerToFriend(mergePlayerId, req.sender_id, userId)
+        } else {
+          await createLinkedFriendPlayer(userId, req.sender_id)
+        }
+        await refreshFriendData(userId)
+      }
+      setMergePrompt(null)
+    } catch (err: unknown) {
+      console.error('İstek kabul hatası:', err)
+      setAddError(getSupabaseErrorMessage(err, 'İstek kabul edilemedi'))
+    } finally {
+      setResponding(false)
+    }
   }
 
   const handleRespond = async (req: FriendRequest, accept: boolean) => {
-    await respondToFriendRequest(req.id, accept, req.sender_id, req.receiver_id)
-    const [fr, pend] = await Promise.all([fetchFriends(userId), fetchPendingRequests(userId)])
-    setFriends(fr.data ?? [])
-    setPendingRequests(pend.data ?? [])
+    if (!accept) {
+      setResponding(true)
+      try {
+        await respondToFriendRequest(req.id, false)
+        if (userId) await refreshFriendData(userId)
+      } catch (err: unknown) {
+        setAddError(getSupabaseErrorMessage(err, 'İşlem başarısız'))
+      } finally {
+        setResponding(false)
+      }
+      return
+    }
+
+    const matching = findMatchingLocalPlayers(localPlayers, req.sender_profile?.display_name)
+    if (matching.length > 0) {
+      setMergePrompt({ req, matchingPlayers: matching })
+      return
+    }
+
+    await completeFriendAccept(req)
   }
 
-  const handleRemoveFriend = async (friendId: string) => {
-    await removeFriend(userId, friendId)
-    setFriends((prev) => prev.filter((f) => f.friend_id !== friendId))
+  const handleRemoveFriend = async () => {
+    if (!confirmRemoveFriend || !userId) return
+    setRemovingFriend(true)
+    setAddError('')
+    try {
+      await removeFriend(confirmRemoveFriend.friendId)
+      await refreshFriendData(userId)
+      setConfirmRemoveFriend(null)
+    } catch (err: unknown) {
+      setAddError(getSupabaseErrorMessage(err, 'Arkadaş silinemedi'))
+    } finally {
+      setRemovingFriend(false)
+    }
   }
 
   const handleLogout = async () => {
@@ -209,9 +382,10 @@ function ProfilePage() {
                     className="bg-[#0f3460]/50 border border-[#2d3748] rounded-lg py-1.5 px-3 text-[#a0aec0] text-xs w-full focus:outline-none focus:border-[#e94560]"
                   />
                   <div className="flex gap-2">
-                    <button onClick={() => setEditMode(false)} className="flex-1 bg-[#0f3460] text-[#a0aec0] text-xs font-semibold py-1.5 rounded-lg">İptal</button>
+                    <button onClick={() => { setEditMode(false); setEditError('') }} className="flex-1 bg-[#0f3460] text-[#a0aec0] text-xs font-semibold py-1.5 rounded-lg">İptal</button>
                     <button onClick={handleSaveEdit} disabled={editSaving} className="flex-1 bg-[#e94560] text-white text-xs font-bold py-1.5 rounded-lg">Kaydet</button>
                   </div>
+                  {editError && <p className="text-red-400 text-xs">{editError}</p>}
                 </div>
               ) : (
                 <>
@@ -342,13 +516,15 @@ function ProfilePage() {
                     </div>
                     <button
                       onClick={() => handleRespond(req, true)}
-                      className="px-3 py-1 bg-green-600 rounded-lg text-xs text-white font-semibold"
+                      disabled={responding}
+                      className="px-3 py-1 bg-green-600 disabled:opacity-50 rounded-lg text-xs text-white font-semibold"
                     >
                       ✓ Kabul
                     </button>
                     <button
                       onClick={() => handleRespond(req, false)}
-                      className="px-3 py-1 bg-red-700 rounded-lg text-xs text-white font-semibold"
+                      disabled={responding}
+                      className="px-3 py-1 bg-red-700 disabled:opacity-50 rounded-lg text-xs text-white font-semibold"
                     >
                       ✗ Red
                     </button>
@@ -365,7 +541,12 @@ function ProfilePage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#718096] text-sm">@</span>
                   <input
                     value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setSearchResult(undefined); setAddError('') }}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value)
+                      setSearchResult(undefined)
+                      setSearchMeta({ isFriend: false, pendingSent: false })
+                      setAddError('')
+                    }}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearchUser()}
                     placeholder="kullaniciadi"
                     className="w-full bg-[#0f3460]/50 border border-[#2d3748] rounded-xl py-2.5 pl-7 pr-3 text-white placeholder-[#718096] text-sm focus:outline-none focus:border-[#e94560]"
@@ -384,9 +565,19 @@ function ProfilePage() {
                     <p className="text-white text-sm font-semibold">{searchResult.display_name}</p>
                     <p className="text-[#718096] text-xs">@{searchResult.username}</p>
                   </div>
-                  <button onClick={() => handleSendRequest(searchResult.id!)} className="flex items-center gap-1 bg-[#e94560] text-white text-xs font-bold px-3 py-1.5 rounded-lg">
-                    <UserPlus size={12} /> İstek Gönder
-                  </button>
+                  {searchMeta.isFriend ? (
+                    <span className="text-green-400 text-xs font-semibold px-2">✓ Arkadaşsın</span>
+                  ) : searchMeta.pendingSent ? (
+                    <span className="text-[#718096] text-xs font-medium px-2">İstek gönderildi</span>
+                  ) : (
+                    <button
+                      onClick={() => handleSendRequest(searchResult.id!)}
+                      disabled={sendingRequest}
+                      className="flex items-center gap-1 bg-[#e94560] disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-lg"
+                    >
+                      <UserPlus size={12} /> {sendingRequest ? '...' : 'İstek Gönder'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -394,7 +585,7 @@ function ProfilePage() {
             {friends.length > 0 && (
               <div>
                 <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">
-                  Arkadaşlarım ({friends.length})
+                  🤝 Arkadaşlar ({friends.length})
                 </p>
                 {friends.map((friend) => (
                   <div
@@ -415,17 +606,45 @@ function ProfilePage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => navigate({ to: '/players' })}
-                      className="text-[#718096] hover:text-white px-2"
-                      title="Oyuncular sayfasında gör"
-                    >
-                      →
-                    </button>
-                    <button
-                      onClick={() => handleRemoveFriend(friend.friend_id)}
+                      onClick={() =>
+                        setConfirmRemoveFriend({
+                          friendId: friend.friend_id,
+                          name: friend.friend_profile?.display_name ?? 'Arkadaş',
+                        })
+                      }
                       className="text-[#718096] hover:text-red-400 p-1"
                     >
                       <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {localPlayers.length > 0 && (
+              <div>
+                <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">
+                  👤 Yerel Oyuncular ({localPlayers.length})
+                </p>
+                {localPlayers.map((player) => (
+                  <div
+                    key={player.id}
+                    className="flex items-center gap-3 p-3 border-b border-[#2d3748]"
+                  >
+                    <PlayerAvatar
+                      name={player.name}
+                      avatarUrl={player.avatar_url}
+                      size={40}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium truncate">{player.name}</p>
+                      <p className="text-[#718096] text-xs">Yerel oyuncu</p>
+                    </div>
+                    <button
+                      onClick={() => navigate({ to: '/player/$playerId', params: { playerId: player.id } })}
+                      className="text-[#718096] hover:text-white px-2"
+                    >
+                      →
                     </button>
                   </div>
                 ))}
@@ -449,12 +668,88 @@ function ProfilePage() {
               </div>
             )}
 
-            {friends.length === 0 && pendingRequests.length === 0 && (
+            {friends.length === 0 && localPlayers.length === 0 && pendingRequests.length === 0 && (
               <p className="text-[#718096] text-center py-8">Henüz arkadaşın yok</p>
             )}
           </div>
         )}
       </div>
+
+      {/* Arkadaş silme onayı */}
+      {confirmRemoveFriend && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-safe-bottom">
+          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-5 w-full max-w-sm mb-4 sm:mb-0">
+            <h3 className="text-white font-bold text-base mb-2">Arkadaşı sil</h3>
+            <p className="text-[#a0aec0] text-sm mb-5">
+              <span className="text-white font-medium">{confirmRemoveFriend.name}</span>
+              {' '}adlı kişiyi arkadaş listenden kaldırmak istediğine emin misin? Her iki taraftan da silinecek.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleRemoveFriend}
+                disabled={removingFriend}
+                className="flex-1 bg-red-600 disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-xl"
+              >
+                {removingFriend ? '...' : 'Evet, sil'}
+              </button>
+              <button
+                onClick={() => setConfirmRemoveFriend(null)}
+                disabled={removingFriend}
+                className="flex-1 bg-[#0f3460] text-[#a0aec0] text-sm font-semibold py-2.5 rounded-xl"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Yerel oyuncu birleştirme modalı */}
+      {mergePrompt && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-safe-bottom">
+          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-5 w-full max-w-sm mb-4 sm:mb-0">
+            <h3 className="text-white font-bold text-base mb-1">Yerel oyuncu birleştir</h3>
+            <p className="text-[#a0aec0] text-sm mb-4">
+              <span className="text-white font-medium">
+                {mergePrompt.req.sender_profile?.display_name}
+              </span>
+              {' '}ile aynı kişi olan yerel oyuncunu birleştirmek ister misin? Eski oyun geçmişin korunur.
+            </p>
+            <div className="flex flex-col gap-2 mb-4">
+              {mergePrompt.matchingPlayers.map((player) => (
+                <button
+                  key={player.id}
+                  onClick={() => completeFriendAccept(mergePrompt.req, player.id)}
+                  disabled={responding}
+                  className="flex items-center gap-3 bg-[#0f3460]/50 border border-[#2d3748] hover:border-[#e94560] rounded-xl p-3 text-left disabled:opacity-50"
+                >
+                  <PlayerAvatar name={player.name} size={36} />
+                  <div>
+                    <p className="text-white text-sm font-semibold">{player.name}</p>
+                    <p className="text-[#718096] text-xs">Yerel oyuncu ile birleştir</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => completeFriendAccept(mergePrompt.req)}
+                disabled={responding}
+                className="flex-1 bg-[#e94560] disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-xl"
+              >
+                {responding ? '...' : 'Yeni arkadaş olarak ekle'}
+              </button>
+              <button
+                onClick={() => setMergePrompt(null)}
+                disabled={responding}
+                className="px-4 bg-[#0f3460] text-[#a0aec0] text-sm font-semibold py-2.5 rounded-xl"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
