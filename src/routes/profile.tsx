@@ -17,7 +17,7 @@ import {
   areFriends,
   findMatchingLocalPlayers,
   createLinkedFriendPlayer,
-  linkLocalPlayerToFriend,
+  mergePlayerWithFriend,
 } from '@/lib/socialSupabase'
 import type { Friend, FriendRequest, Group, Profile } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
@@ -272,7 +272,7 @@ function ProfilePage() {
       const result = await respondToFriendRequest(req.id, true)
       if (result.accepted && userId) {
         if (mergePlayerId) {
-          await linkLocalPlayerToFriend(mergePlayerId, req.sender_id, userId)
+          await mergePlayerWithFriend(userId, mergePlayerId, req.sender_id)
         } else {
           await createLinkedFriendPlayer(userId, req.sender_id)
         }

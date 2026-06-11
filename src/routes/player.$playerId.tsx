@@ -61,6 +61,9 @@ function PlayerProfilePage() {
   const { playerId } = Route.useParams()
   const navigate = useNavigate()
   const [player, setPlayer] = useState<SavedPlayer | null>(null)
+  const [realUsername, setRealUsername] = useState<string | null>(null)
+  const [isLinkedFriend, setIsLinkedFriend] = useState(false)
+  const [statsPlayerName, setStatsPlayerName] = useState('')
   const [stats, setStats] = useState<PlayerProfileStats | null>(null)
   const [history, setHistory] = useState<GameHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -88,7 +91,33 @@ function PlayerProfilePage() {
       return
     }
 
-    setPlayer(playerData)
+    let displayName = playerData.name
+    let displayAvatar = playerData.avatar_url
+    let username: string | null = null
+    const linked = !!playerData.linked_user_id && playerData.linked_user_id !== user.id
+
+    if (playerData.linked_user_id) {
+      const { data: realProfile } = await supabase
+        .from('profiles')
+        .select('display_name, username, avatar_url')
+        .eq('id', playerData.linked_user_id)
+        .maybeSingle<{ display_name: string | null; username: string | null; avatar_url: string | null }>()
+
+      if (realProfile) {
+        displayName = realProfile.display_name ?? playerData.name
+        displayAvatar = realProfile.avatar_url ?? playerData.avatar_url
+        username = realProfile.username
+      }
+    }
+
+    setPlayer({
+      ...playerData,
+      name: displayName,
+      avatar_url: displayAvatar,
+    })
+    setRealUsername(username)
+    setIsLinkedFriend(linked)
+    setStatsPlayerName(playerData.name)
 
     const { games, roundsByGame } = await fetchPlayerGamesWithRounds(user.id, playerData.name)
     setAllGames(games)
@@ -102,47 +131,47 @@ function PlayerProfilePage() {
   }, [playerId])
 
   useEffect(() => {
-    if (!player) return
+    if (!player || !statsPlayerName) return
     const filteredGames = allGames.filter((g) => matchesGameFilter(g, gameFilter))
     const filteredRoundsByGame: Record<string, import('@/types').Round[]> = {}
     for (const game of filteredGames) {
       filteredRoundsByGame[game.id] = allRoundsByGame[game.id] ?? []
     }
 
-    setStats(computePlayerProfileStats(player.name, filteredGames, filteredRoundsByGame))
+    setStats(computePlayerProfileStats(statsPlayerName, filteredGames, filteredRoundsByGame))
 
     const items: GameHistoryItem[] = filteredGames.slice(0, 10).map((game) => {
       const rounds = filteredRoundsByGame[game.id] ?? []
       const playerTotals = computeGameTotals(game, rounds)
       const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
-      const rank = getPlayerRank(player.name, playerTotals)
+      const rank = getPlayerRank(statsPlayerName, playerTotals)
       const total = isSayiliGame(game)
-        ? getSayiliEntityScore(game, rounds, player.name)
-        : getPlayerGameTotal(rounds, player.name)
+        ? getSayiliEntityScore(game, rounds, statsPlayerName)
+        : getPlayerGameTotal(rounds, statsPlayerName)
       return {
         game,
         total,
         rank,
-        isWinner: winners.some((w) => w.toLowerCase() === player.name.toLowerCase()),
+        isWinner: winners.some((w) => w.toLowerCase() === statsPlayerName.toLowerCase()),
       }
     })
     setHistory(items)
-    setEsliStats(computePlayerEsliStats(player.name, allGames, allRoundsByGame))
+    setEsliStats(computePlayerEsliStats(statsPlayerName, allGames, allRoundsByGame))
 
     const games101 = filteredGames.filter((g) => is101Game(g))
     if (games101.length > 0) {
-      setStats101(computePlayer101Stats(player.name, filteredGames, filteredRoundsByGame))
+      setStats101(computePlayer101Stats(statsPlayerName, filteredGames, filteredRoundsByGame))
     } else {
       setStats101(null)
     }
 
     const gamesBankolu = filteredGames.filter((g) => isBankoluGame(g))
     if (gamesBankolu.length > 0) {
-      setStatsBankolu(computePlayerBankoluStats(player.name, filteredGames, filteredRoundsByGame))
+      setStatsBankolu(computePlayerBankoluStats(statsPlayerName, filteredGames, filteredRoundsByGame))
     } else {
       setStatsBankolu(null)
     }
-  }, [player, allGames, allRoundsByGame, gameFilter])
+  }, [player, statsPlayerName, allGames, allRoundsByGame, gameFilter])
 
   if (loading) {
     return (
@@ -177,14 +206,22 @@ function PlayerProfilePage() {
 
         <div className="flex flex-col items-center mb-6">
           <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={96} className="mb-3" />
-          <h2 className="text-white text-xl font-bold mb-3">{player.name}</h2>
-          <button
-            onClick={() => setShowEditModal(true)}
-            className="flex items-center gap-2 bg-[#0f3460] text-[#a0aec0] hover:text-white text-sm font-medium px-4 py-2 rounded-xl"
-          >
-            <Pencil size={14} />
-            Düzenle
-          </button>
+          <h2 className="text-white text-xl font-bold">{player.name}</h2>
+          {realUsername && (
+            <p className="text-[#718096] text-sm mt-1">@{realUsername}</p>
+          )}
+          {isLinkedFriend && (
+            <p className="text-[#718096] text-xs mt-1">Arkadaş ✓</p>
+          )}
+          {!isLinkedFriend && (
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="flex items-center gap-2 bg-[#0f3460] text-[#a0aec0] hover:text-white text-sm font-medium px-4 py-2 rounded-xl mt-3"
+            >
+              <Pencil size={14} />
+              Düzenle
+            </button>
+          )}
         </div>
 
         {statsBankolu && (

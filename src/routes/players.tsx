@@ -150,6 +150,33 @@ function PlayersPage() {
     setShowPlayerModal(true)
   }
 
+  const renderFriendRow = (player: PlayerRow) => (
+    <motion.div
+      key={player.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:border-[#e94560]/40 transition-colors"
+      onClick={() => {
+        if (player.linked_user_id) {
+          navigate({ to: '/player/$playerId', params: { playerId: player.id } })
+        }
+      }}
+    >
+      <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={44} />
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-medium truncate">{player.name}</p>
+        {player.linked_user_id && (
+          <p className="text-[#718096] text-xs">
+            {player.username ? `@${player.username} · ` : ''}Arkadaş ✓
+          </p>
+        )}
+      </div>
+      {player.linked_user_id && (
+        <span className="text-[#718096]">→</span>
+      )}
+    </motion.div>
+  )
+
   const renderPlayerRow = (player: PlayerRow, showUsername = false) => (
     <motion.div
       key={player.id}
@@ -249,7 +276,7 @@ function PlayersPage() {
                   🤝 Arkadaşlar ({realFriends.length})
                 </h2>
                 <div className="flex flex-col gap-2">
-                  {realFriends.map((p) => renderPlayerRow(p, true))}
+                  {realFriends.map((p) => renderFriendRow(p))}
                 </div>
               </section>
             )}

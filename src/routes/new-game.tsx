@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, createGame, searchPlayersByName, createPlayer } from '@/lib/supabase'
+import { supabase, createGame, createPlayer } from '@/lib/supabase'
 import { fetchPlayerSuggestionsWithSocial } from '@/lib/socialSupabase'
 import { useSettingsStore, useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, Plus, Minus, User, Play } from 'lucide-react'
@@ -600,6 +600,7 @@ interface SuggestionItem {
   isGroupMember?: boolean
   groupName?: string
   isFriend?: boolean
+  isSelf?: boolean
 }
 
 function PlayerAutocompleteInput({
@@ -632,23 +633,23 @@ function PlayerAutocompleteInput({
   }, [])
 
   const search = (query: string) => {
-    if (!userId || !query.trim()) { setSuggestions([]); return }
+    if (!userId || !query.trim()) {
+      setSuggestions([])
+      return
+    }
 
-    // Use social suggestions that include group tags
     fetchPlayerSuggestionsWithSocial(userId, query.trim()).then((results) => {
-      if (results.length > 0) {
-        setSuggestions(results.map((r) => ({
+      setSuggestions(
+        results.map((r) => ({
+          id: r.id,
           name: r.name,
           avatar_url: r.avatarUrl,
           isGroupMember: r.isGroupMember,
           groupName: r.groupName,
-        })))
-      } else {
-        // fallback to plain search
-        searchPlayersByName(userId, query.trim(), 5).then(({ data }) => {
-          setSuggestions((data ?? []).map((p) => ({ id: p.id, name: p.name, avatar_url: p.avatar_url })))
-        })
-      }
+          isFriend: r.isFriend,
+          isSelf: r.isSelf,
+        }))
+      )
     })
   }
 
@@ -705,6 +706,12 @@ function PlayerAutocompleteInput({
               <PlayerAvatar name={s.name} avatarUrl={s.avatar_url} size={28} />
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm">{s.name}</p>
+                {s.isSelf && (
+                  <p className="text-[#e94560] text-[10px]">Sen</p>
+                )}
+                {s.isFriend && !s.isSelf && (
+                  <p className="text-[#718096] text-[10px]">Arkadaş ✓</p>
+                )}
                 {s.isGroupMember && s.groupName && (
                   <p className="text-[#718096] text-[10px] flex items-center gap-1">
                     👥 {s.groupName}

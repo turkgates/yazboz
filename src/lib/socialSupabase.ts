@@ -559,27 +559,196 @@ export async function createLinkedFriendPlayer(currentUserId: string, friendUser
   if (error) throw error
 }
 
-export async function linkLocalPlayerToFriend(
-  playerId: string,
-  friendUserId: string,
-  userId: string
-) {
+export async function ensureSelfInPlayers() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
   const { data: profile } = await supabase
     .from('profiles')
-    .select('avatar_url')
-    .eq('id', friendUserId)
-    .maybeSingle<Pick<Profile, 'avatar_url'>>()
+    .select('display_name, avatar_url')
+    .eq('id', user.id)
+    .maybeSingle<Pick<Profile, 'display_name' | 'avatar_url'>>()
 
-  const { error } = await supabase
+  if (!profile?.display_name) return
+
+  const { data: existing } = await supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('linked_user_id', user.id)
+    .maybeSingle()
+
+  if (existing) return
+
+  await supabase.from('players').insert({
+    user_id: user.id,
+    name: profile.display_name,
+    avatar_url: profile.avatar_url ?? null,
+    linked_user_id: user.id,
+  } as Partial<SavedPlayer>)
+}
+
+export async function searchPlayersForAutocomplete(userId: string, query: string) {
+  if (!query.trim()) return []
+
+  const { data: localPlayers } = await supabase
+    .from('players')
+    .select('id, name, avatar_url, linked_user_id')
+    .eq('user_id', userId)
+    .ilike('name', `%${query.trim()}%`)
+    .order('name')
+
+  const seen = new Set<string>()
+  const uniquePlayers = (localPlayers ?? []).filter((p) => {
+    if (p.linked_user_id) {
+      if (seen.has(p.linked_user_id)) return false
+      seen.add(p.linked_user_id)
+    }
+    return true
+  })
+
+  const q = query.trim().toLowerCase()
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name, avatar_url')
+    .eq('id', userId)
+    .maybeSingle<Pick<Profile, 'display_name' | 'avatar_url'>>()
+
+  const results: {
+    id: string
+    name: string
+    avatar_url: string | null
+    linked_user_id: string | null
+    isSelf?: boolean
+  }[] = uniquePlayers.map((p) => ({
+    id: p.id,
+    name: p.name,
+    avatar_url: p.avatar_url,
+    linked_user_id: p.linked_user_id,
+    isSelf: p.linked_user_id === userId,
+  }))
+
+  const hasSelf = results.some((p) => p.linked_user_id === userId)
+  if (!hasSelf && profile?.display_name?.toLowerCase().includes(q)) {
+    const selfRow = localPlayers?.find((p) => p.linked_user_id === userId)
+    results.unshift({
+      id: selfRow?.id ?? '',
+      name: profile.display_name,
+      avatar_url: profile.avatar_url ?? null,
+      linked_user_id: userId,
+      isSelf: true,
+    })
+  }
+
+  return results.filter((p) => p.id || p.isSelf)
+}
+
+export async function mergePlayerWithFriend(
+  userId: string,
+  localPlayerId: string,
+  realUserId: string
+) {
+  const { data: localPlayer, error: localError } = await supabase
+    .from('players')
+    .select('name')
+    .eq('id', localPlayerId)
+    .eq('user_id', userId)
+    .single<{ name: string }>()
+
+  if (localError || !localPlayer) throw localError ?? new Error('Yerel oyuncu bulunamadı')
+
+  const { data: realProfile, error: profileError } = await supabase
+    .from('profiles')
+    .select('display_name, avatar_url')
+    .eq('id', realUserId)
+    .single<Pick<Profile, 'display_name' | 'avatar_url'>>()
+
+  if (profileError || !realProfile?.display_name) {
+    throw profileError ?? new Error('Profil bulunamadı')
+  }
+
+  const oldName = localPlayer.name
+  const newName = realProfile.display_name
+
+  const { error: updateError } = await supabase
     .from('players')
     .update({
-      linked_user_id: friendUserId,
-      avatar_url: profile?.avatar_url ?? null,
+      name: newName,
+      avatar_url: realProfile.avatar_url ?? null,
+      linked_user_id: realUserId,
     })
-    .eq('id', playerId)
+    .eq('id', localPlayerId)
     .eq('user_id', userId)
 
-  if (error) throw error
+  if (updateError) throw updateError
+
+  await supabase
+    .from('players')
+    .delete()
+    .eq('user_id', userId)
+    .eq('linked_user_id', realUserId)
+    .neq('id', localPlayerId)
+
+  const { data: games } = await supabase
+    .from('games')
+    .select('id, players, teams')
+    .eq('user_id', userId)
+
+  for (const game of games ?? []) {
+    const playersArr = (game.players ?? []) as string[]
+    if (!playersArr.includes(oldName)) continue
+
+    const newPlayers = playersArr.map((p) => (p === oldName ? newName : p))
+    const teams = game.teams as string[][] | null
+    const newTeams = teams?.map((team) => team.map((p) => (p === oldName ? newName : p))) ?? null
+
+    await supabase
+      .from('games')
+      .update({
+        players: newPlayers,
+        ...(newTeams ? { teams: newTeams } : {}),
+      })
+      .eq('id', game.id)
+
+    const { data: rounds } = await supabase
+      .from('rounds')
+      .select('id, scores, indicator_players, banko_players')
+      .eq('game_id', game.id)
+
+    for (const round of rounds ?? []) {
+      const scores = { ...(round.scores as Record<string, number>) }
+      const indicatorPlayers = [...((round.indicator_players as string[] | null) ?? [])]
+      const bankoPlayers = [...((round.banko_players as string[] | null) ?? [])]
+      let changed = false
+
+      if (scores[oldName] !== undefined) {
+        scores[newName] = scores[oldName]
+        delete scores[oldName]
+        changed = true
+      }
+
+      const newIndicators = indicatorPlayers.map((p) => (p === oldName ? newName : p))
+      if (JSON.stringify(newIndicators) !== JSON.stringify(indicatorPlayers)) {
+        changed = true
+      }
+
+      const newBankos = bankoPlayers.map((p) => (p === oldName ? newName : p))
+      if (JSON.stringify(newBankos) !== JSON.stringify(bankoPlayers)) {
+        changed = true
+      }
+
+      if (!changed) continue
+
+      await supabase
+        .from('rounds')
+        .update({
+          scores,
+          indicator_players: newIndicators,
+          banko_players: newBankos,
+        })
+        .eq('id', round.id)
+    }
+  }
 }
 
 export async function removeFriend(friendId: string) {
@@ -595,12 +764,14 @@ export async function removeFriend(friendId: string) {
 // ── Group member suggestions for new-game ────────────────────────────────
 
 export interface PlayerSuggestion {
+  id?: string
   name: string
   avatarUrl?: string | null
   isGroupMember?: boolean
   groupName?: string
   isFriend?: boolean
   linkedUserId?: string
+  isSelf?: boolean
 }
 
 export async function fetchPlayerSuggestionsWithSocial(
@@ -609,18 +780,9 @@ export async function fetchPlayerSuggestionsWithSocial(
 ): Promise<PlayerSuggestion[]> {
   if (!query.trim()) return []
 
-  const [playersRes, groupsRes] = await Promise.all([
-    supabase
-      .from('players')
-      .select('id, name, avatar_url, linked_user_id')
-      .eq('user_id', userId)
-      .ilike('name', `${query}%`)
-      .limit(8),
-    fetchMyGroups(userId),
-  ])
+  const players = await searchPlayersForAutocomplete(userId, query)
 
-  const players = playersRes.data ?? []
-
+  const groupsRes = await fetchMyGroups(userId)
   const groupMemberMap: Record<string, string> = {}
   for (const group of (groupsRes.data ?? [])) {
     const { data: members } = await fetchGroupMembers(group.id)
@@ -631,10 +793,13 @@ export async function fetchPlayerSuggestionsWithSocial(
   }
 
   return players.map((p) => ({
+    id: p.id,
     name: p.name,
     avatarUrl: p.avatar_url,
+    linkedUserId: p.linked_user_id ?? undefined,
+    isFriend: !!p.linked_user_id && p.linked_user_id !== userId,
+    isSelf: p.isSelf,
     isGroupMember: !!groupMemberMap[p.name],
     groupName: groupMemberMap[p.name],
-    linkedUserId: p.linked_user_id ?? undefined,
   }))
 }
