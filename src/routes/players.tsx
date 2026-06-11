@@ -9,7 +9,7 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { supabase, deletePlayer } from '@/lib/supabase'
-import { searchProfileByUsername, sendFriendRequest, getSupabaseErrorMessage } from '@/lib/socialSupabase'
+import { searchProfileByUsername, sendFriendRequest, getSupabaseErrorMessage, removeFriend } from '@/lib/socialSupabase'
 import type { SavedPlayer } from '@/types'
 import { Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
@@ -38,6 +38,8 @@ function PlayersPage() {
   const [showFriendModal, setShowFriendModal] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<SavedPlayer | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmRemoveFriend, setConfirmRemoveFriend] = useState<PlayerRow | null>(null)
+  const [removingFriend, setRemovingFriend] = useState(false)
 
   // Friend search
   const [searchQuery, setSearchQuery] = useState('')
@@ -150,29 +152,51 @@ function PlayersPage() {
     setShowPlayerModal(true)
   }
 
+  const handleRemoveFriend = async () => {
+    if (!confirmRemoveFriend?.linked_user_id) return
+    setRemovingFriend(true)
+    try {
+      await removeFriend(confirmRemoveFriend.linked_user_id)
+      setConfirmRemoveFriend(null)
+      loadPlayers()
+    } catch (err: unknown) {
+      console.error('Arkadaş silme hatası:', err)
+    } finally {
+      setRemovingFriend(false)
+    }
+  }
+
   const renderFriendRow = (player: PlayerRow) => (
     <motion.div
       key={player.id}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:border-[#e94560]/40 transition-colors"
-      onClick={() => {
-        if (player.linked_user_id) {
-          navigate({ to: '/player/$playerId', params: { playerId: player.id } })
-        }
-      }}
+      className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3"
     >
       <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={44} />
       <div className="flex-1 min-w-0">
         <p className="text-white font-medium truncate">{player.name}</p>
         {player.linked_user_id && (
-          <p className="text-[#718096] text-xs">
-            {player.username ? `@${player.username} · ` : ''}Arkadaş ✓
-          </p>
+          <p className="text-[#718096] text-xs">Arkadaş ✓</p>
         )}
       </div>
       {player.linked_user_id && (
-        <span className="text-[#718096]">→</span>
+        <>
+          <button
+            type="button"
+            onClick={() => navigate({ to: '/player/$playerId', params: { playerId: player.id } })}
+            className="text-[#718096] hover:text-white p-2"
+          >
+            →
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmRemoveFriend(player)}
+            className="text-red-400 hover:text-red-300 p-2"
+          >
+            ✕
+          </button>
+        </>
       )}
     </motion.div>
   )
@@ -375,6 +399,43 @@ function PlayersPage() {
             onClose={() => { setShowPlayerModal(false); setEditingPlayer(null) }}
             onSaved={loadPlayers}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmRemoveFriend && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          >
+            <div className="absolute inset-0 bg-black/70" onClick={() => setConfirmRemoveFriend(null)} />
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="relative bg-[#16213e] border border-[#2d3748] rounded-2xl p-5 max-w-sm w-full"
+            >
+              <p className="text-white text-center mb-5">
+                <span className="font-semibold">{confirmRemoveFriend.name}</span> adlı kişiyi arkadaş listenden kaldırmak istediğine emin misin?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmRemoveFriend(null)}
+                  className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3 rounded-xl"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={handleRemoveFriend}
+                  disabled={removingFriend}
+                  className="flex-1 bg-red-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl"
+                >
+                  {removingFriend ? '...' : 'Sil'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

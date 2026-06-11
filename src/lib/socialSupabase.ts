@@ -761,6 +761,107 @@ export async function removeFriend(friendId: string) {
   }
 }
 
+export interface PendingMergeRequest {
+  id: string
+  sender_id: string
+  receiver_id: string
+  friendUserId: string
+  friendProfile?: Pick<Profile, 'display_name' | 'avatar_url' | 'username'>
+}
+
+export async function checkPendingMergeRequest(userId: string): Promise<PendingMergeRequest | null> {
+  const { data, error } = await supabase
+    .from('friend_requests')
+    .select('id, sender_id, receiver_id, merge_prompted')
+    .eq('status', 'accepted')
+    .eq('merge_prompted', false)
+    .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+    .limit(1)
+    .maybeSingle<{ id: string; sender_id: string; receiver_id: string; merge_prompted: boolean }>()
+
+  if (error || !data) return null
+
+  const friendUserId = data.sender_id === userId ? data.receiver_id : data.sender_id
+
+  const { data: existing } = await supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('linked_user_id', friendUserId)
+    .maybeSingle()
+
+  if (existing) {
+    await markMergePrompted(data.id)
+    return null
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name, avatar_url, username')
+    .eq('id', friendUserId)
+    .maybeSingle<Pick<Profile, 'display_name' | 'avatar_url' | 'username'>>()
+
+  return {
+    id: data.id,
+    sender_id: data.sender_id,
+    receiver_id: data.receiver_id,
+    friendUserId,
+    friendProfile: profile ?? undefined,
+  }
+}
+
+export async function markMergePrompted(requestId: string) {
+  await supabase.from('friend_requests').update({ merge_prompted: true }).eq('id', requestId)
+}
+
+export async function countGamesForPlayerName(userId: string, playerName: string): Promise<number> {
+  const { data: games } = await supabase
+    .from('games')
+    .select('id, players')
+    .eq('user_id', userId)
+    .eq('status', 'finished')
+
+  return (games ?? []).filter((g) =>
+    (g.players as string[]).some((p) => p.toLowerCase() === playerName.toLowerCase())
+  ).length
+}
+
+export async function fetchGroupGamesWithRounds(groupId: string) {
+  const { data: links } = await supabase
+    .from('group_games')
+    .select('game_id')
+    .eq('group_id', groupId)
+
+  const gameIds = (links ?? []).map((l) => l.game_id)
+  if (!gameIds.length) {
+    return { games: [] as import('@/types').Game[], roundsByGame: {} as Record<string, import('@/types').Round[]> }
+  }
+
+  const { data: games } = await supabase
+    .from('games')
+    .select('*')
+    .in('id', gameIds)
+    .eq('status', 'finished')
+
+  const { data: rounds } = await supabase
+    .from('rounds')
+    .select('*')
+    .in('game_id', gameIds)
+
+  const roundsByGame: Record<string, import('@/types').Round[]> = {}
+  for (const round of rounds ?? []) {
+    if (!roundsByGame[round.game_id]) roundsByGame[round.game_id] = []
+    roundsByGame[round.game_id].push(round)
+  }
+
+  return { games: (games ?? []) as import('@/types').Game[], roundsByGame }
+}
+
+export async function removeGroupMember(memberId: string) {
+  const { error } = await supabase.from('group_members').delete().eq('id', memberId)
+  if (error) throw error
+}
+
 // ── Group member suggestions for new-game ────────────────────────────────
 
 export interface PlayerSuggestion {

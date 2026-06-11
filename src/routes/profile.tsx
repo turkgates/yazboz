@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
-import { supabase, uploadAvatar } from '@/lib/supabase'
+import { supabase, uploadAvatar, signOut } from '@/lib/supabase'
 import {
   fetchUserProfile,
   upsertProfile,
@@ -15,16 +15,12 @@ import {
   fetchMyGroups,
   getSupabaseErrorMessage,
   areFriends,
-  findMatchingLocalPlayers,
-  createLinkedFriendPlayer,
-  mergePlayerWithFriend,
 } from '@/lib/socialSupabase'
 import type { Friend, FriendRequest, Group, Profile } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
 import { Camera, LogOut, Pencil, UserPlus, Users, X } from 'lucide-react'
-import { computePlayerProfileStats } from '@/lib/statsUtils'
-import { fetchPlayerGamesWithRounds, signOut } from '@/lib/supabase'
+import { PlayerStats } from '@/components/PlayerStats'
 
 export const Route = createFileRoute('/profile')({
   beforeLoad: async () => {
@@ -44,9 +40,6 @@ function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('stats')
   const [loading, setLoading] = useState(true)
-
-  // Stats
-  const [stats, setStats] = useState<ReturnType<typeof computePlayerProfileStats> | null>(null)
 
   // Groups
   const [groups, setGroups] = useState<Group[]>([])
@@ -74,10 +67,6 @@ function ProfilePage() {
     isFriend: false,
     pendingSent: false,
   })
-  const [mergePrompt, setMergePrompt] = useState<{
-    req: FriendRequest
-    matchingPlayers: { id: string; name: string }[]
-  } | null>(null)
   const [confirmRemoveFriend, setConfirmRemoveFriend] = useState<{
     friendId: string
     name: string
@@ -100,12 +89,6 @@ function ProfilePage() {
 
     if (profileRes.data) setProfile(profileRes.data)
     setLoading(false)
-
-    const displayName = profileRes.data?.display_name ?? ''
-    if (displayName) {
-      const { games, roundsByGame } = await fetchPlayerGamesWithRounds(user.id, displayName)
-      setStats(computePlayerProfileStats(displayName, games, roundsByGame))
-    }
 
     const [groupsRes, friendsRes, pendingRes, sentRes, playersRes] = await Promise.all([
       fetchMyGroups(user.id),
@@ -265,20 +248,12 @@ function ProfilePage() {
     }
   }
 
-  const completeFriendAccept = async (req: FriendRequest, mergePlayerId?: string) => {
+  const completeFriendAccept = async (req: FriendRequest) => {
     setResponding(true)
     setAddError('')
     try {
-      const result = await respondToFriendRequest(req.id, true)
-      if (result.accepted && userId) {
-        if (mergePlayerId) {
-          await mergePlayerWithFriend(userId, mergePlayerId, req.sender_id)
-        } else {
-          await createLinkedFriendPlayer(userId, req.sender_id)
-        }
-        await refreshFriendData(userId)
-      }
-      setMergePrompt(null)
+      await respondToFriendRequest(req.id, true)
+      if (userId) await refreshFriendData(userId)
     } catch (err: unknown) {
       console.error('İstek kabul hatası:', err)
       setAddError(getSupabaseErrorMessage(err, 'İstek kabul edilemedi'))
@@ -298,12 +273,6 @@ function ProfilePage() {
       } finally {
         setResponding(false)
       }
-      return
-    }
-
-    const matching = findMatchingLocalPlayers(localPlayers, req.sender_profile?.display_name)
-    if (matching.length > 0) {
-      setMergePrompt({ req, matchingPlayers: matching })
       return
     }
 
@@ -403,14 +372,10 @@ function ProfilePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mt-4">
+          <div className="grid grid-cols-2 gap-2 mt-4">
               <div className="bg-[#0f3460]/40 rounded-xl p-2.5 text-center">
-                <p className="text-white font-bold text-lg">{stats?.totalGames ?? 0}</p>
-                <p className="text-[#718096] text-[10px]">Oyun</p>
-              </div>
-              <div className="bg-[#0f3460]/40 rounded-xl p-2.5 text-center">
-                <p className="text-[#f5a623] font-bold text-lg">{stats?.wins ?? 0}</p>
-                <p className="text-[#718096] text-[10px]">Kazanma</p>
+                <p className="text-white font-bold text-lg">{friends.length}</p>
+                <p className="text-[#718096] text-[10px]">Arkadaş</p>
               </div>
               <div className="bg-[#0f3460]/40 rounded-xl p-2.5 text-center">
                 <p className="text-white font-bold text-lg">{groups.length}</p>
@@ -438,25 +403,15 @@ function ProfilePage() {
         </div>
 
         {/* Stats tab */}
-        {activeTab === 'stats' && stats && (
-          <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Toplam Oyun', value: stats.totalGames, color: 'text-white' },
-                { label: 'Kazanma', value: stats.wins, color: 'text-[#f5a623]' },
-                { label: 'Toplam El', value: stats.totalRounds, color: 'text-white' },
-                { label: 'Kazanma %', value: `${stats.winPercentage}%`, color: 'text-green-400' },
-              ].map((s) => (
-                <div key={s.label} className="bg-[#16213e] border border-[#2d3748] rounded-xl p-3">
-                  <p className="text-[#718096] text-xs mb-1">{s.label}</p>
-                  <p className={`${s.color} font-bold text-xl`}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+        {activeTab === 'stats' && userId && profile?.display_name && (
+          <PlayerStats
+            playerName={profile.display_name}
+            ownerUserId={userId}
+            showHistory={false}
+          />
         )}
-        {activeTab === 'stats' && !stats && (
-          <p className="text-[#718096] text-center py-8">Henüz oyun kaydı yok</p>
+        {activeTab === 'stats' && !profile?.display_name && (
+          <p className="text-[#718096] text-center py-8">Profil adını ayarla</p>
         )}
 
         {/* Groups tab */}
@@ -696,53 +651,6 @@ function ProfilePage() {
                 onClick={() => setConfirmRemoveFriend(null)}
                 disabled={removingFriend}
                 className="flex-1 bg-[#0f3460] text-[#a0aec0] text-sm font-semibold py-2.5 rounded-xl"
-              >
-                İptal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Yerel oyuncu birleştirme modalı */}
-      {mergePrompt && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 px-4 pb-safe-bottom">
-          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-5 w-full max-w-sm mb-4 sm:mb-0">
-            <h3 className="text-white font-bold text-base mb-1">Yerel oyuncu birleştir</h3>
-            <p className="text-[#a0aec0] text-sm mb-4">
-              <span className="text-white font-medium">
-                {mergePrompt.req.sender_profile?.display_name}
-              </span>
-              {' '}ile aynı kişi olan yerel oyuncunu birleştirmek ister misin? Eski oyun geçmişin korunur.
-            </p>
-            <div className="flex flex-col gap-2 mb-4">
-              {mergePrompt.matchingPlayers.map((player) => (
-                <button
-                  key={player.id}
-                  onClick={() => completeFriendAccept(mergePrompt.req, player.id)}
-                  disabled={responding}
-                  className="flex items-center gap-3 bg-[#0f3460]/50 border border-[#2d3748] hover:border-[#e94560] rounded-xl p-3 text-left disabled:opacity-50"
-                >
-                  <PlayerAvatar name={player.name} size={36} />
-                  <div>
-                    <p className="text-white text-sm font-semibold">{player.name}</p>
-                    <p className="text-[#718096] text-xs">Yerel oyuncu ile birleştir</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => completeFriendAccept(mergePrompt.req)}
-                disabled={responding}
-                className="flex-1 bg-[#e94560] disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-xl"
-              >
-                {responding ? '...' : 'Yeni arkadaş olarak ekle'}
-              </button>
-              <button
-                onClick={() => setMergePrompt(null)}
-                disabled={responding}
-                className="px-4 bg-[#0f3460] text-[#a0aec0] text-sm font-semibold py-2.5 rounded-xl"
               >
                 İptal
               </button>

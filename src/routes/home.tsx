@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, redirect, Link } from '@tanstack/react-ro
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchGamesPaginated, signOut } from '@/lib/supabase'
+import { fetchUserProfile } from '@/lib/socialSupabase'
 import type { Game } from '@/types'
 import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Dices } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
@@ -9,6 +10,14 @@ import { GameResultModal } from '@/components/GameResultModal'
 import { getGameTypeLabel } from '@/lib/gameTypes'
 
 const PAGE_SIZE = 5
+
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return 'Günaydın'
+  if (hour >= 12 && hour < 17) return 'İyi günler'
+  if (hour >= 17 && hour < 22) return 'İyi akşamlar'
+  return 'İyi geceler'
+}
 
 export const Route = createFileRoute('/home')({
   beforeLoad: async () => {
@@ -31,8 +40,8 @@ function HomePage() {
   const [loading, setLoading] = useState(true)
   const [loadingMoreActive, setLoadingMoreActive] = useState(false)
   const [loadingMoreFinished, setLoadingMoreFinished] = useState(false)
-  const [userEmail, setUserEmail] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
+  const [displayName, setDisplayName] = useState('')
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -42,8 +51,10 @@ function HomePage() {
   const loadData = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    setUserEmail(user.email ?? '')
     setUserId(user.id)
+
+    const profileRes = await fetchUserProfile(user.id)
+    setDisplayName(profileRes.data?.display_name ?? user.email?.split('@')[0] ?? '')
 
     const [activeRes, finishedRes] = await Promise.all([
       fetchGamesPaginated(user.id, 'active', 0, PAGE_SIZE),
@@ -92,20 +103,26 @@ function HomePage() {
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
-        <div className="flex items-center justify-between py-4 max-w-lg mx-auto">
-          <div>
-            <h1 className="text-xl font-bold text-white">🎴 Yazboz</h1>
-            <p className="text-xs text-[#718096] mt-0.5">{userEmail}</p>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between py-3 max-w-lg mx-auto">
+          <h1 className="text-lg font-bold text-white">Okey Yazboz</h1>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[#a0aec0] hidden sm:inline">
+              {getGreeting()}, {displayName} 👋
+            </span>
             <button
               onClick={handleSignOut}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0] hover:text-red-400 transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#718096] hover:text-white transition-colors"
+              title="Çıkış Yap"
             >
               <LogOut size={18} />
             </button>
           </div>
         </div>
+        {displayName && (
+          <p className="text-sm text-[#718096] pb-3 max-w-lg mx-auto sm:hidden">
+            {getGreeting()}, {displayName} 👋
+          </p>
+        )}
       </div>
 
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full pb-20">
