@@ -47,6 +47,7 @@ function ProfilePage() {
   // Friends
   const [friends, setFriends] = useState<Friend[]>([])
   const [localPlayers, setLocalPlayers] = useState<{ id: string; name: string; avatar_url: string | null }[]>([])
+  const [friendPlayerMap, setFriendPlayerMap] = useState<Record<string, string>>({})
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([])
   const [sentRequests, setSentRequests] = useState<FriendRequest[]>([])
 
@@ -101,12 +102,20 @@ function ProfilePage() {
         .eq('user_id', user.id)
         .order('name'),
     ])
+    if (groupsRes.error) console.error('Profil gruplar hatası:', groupsRes.error)
+    console.log('Profil gruplar:', groupsRes.data)
     setGroups(groupsRes.data ?? [])
     setFriends(friendsRes.data ?? [])
     setPendingRequests(pendingRes.data ?? [])
     setSentRequests(sentRes.data ?? [])
+    const allPlayers = playersRes.data ?? []
+    setFriendPlayerMap(
+      Object.fromEntries(
+        allPlayers.filter((p) => p.linked_user_id).map((p) => [p.linked_user_id!, p.id])
+      )
+    )
     setLocalPlayers(
-      (playersRes.data ?? []).filter((p) => !p.linked_user_id).map((p) => ({
+      allPlayers.filter((p) => !p.linked_user_id).map((p) => ({
         id: p.id,
         name: p.name,
         avatar_url: p.avatar_url,
@@ -157,8 +166,14 @@ function ProfilePage() {
     setFriends(friendsRes.data ?? [])
     setPendingRequests(pendingRes.data ?? [])
     setSentRequests(sentRes.data ?? [])
+    const allPlayers = playersRes.data ?? []
+    setFriendPlayerMap(
+      Object.fromEntries(
+        allPlayers.filter((p) => p.linked_user_id).map((p) => [p.linked_user_id!, p.id])
+      )
+    )
     setLocalPlayers(
-      (playersRes.data ?? []).filter((p) => !p.linked_user_id).map((p) => ({
+      allPlayers.filter((p) => !p.linked_user_id).map((p) => ({
         id: p.id,
         name: p.name,
         avatar_url: p.avatar_url,
@@ -542,7 +557,9 @@ function ProfilePage() {
                 <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-2">
                   🤝 Arkadaşlar ({friends.length})
                 </p>
-                {friends.map((friend) => (
+                {friends.map((friend) => {
+                  const playerId = friendPlayerMap[friend.friend_id]
+                  return (
                   <div
                     key={friend.id}
                     className="flex items-center gap-3 p-3 border-b border-[#2d3748]"
@@ -560,6 +577,15 @@ function ProfilePage() {
                         @{friend.friend_profile?.username}
                       </p>
                     </div>
+                    {playerId && (
+                      <button
+                        type="button"
+                        onClick={() => navigate({ to: '/player/$playerId', params: { playerId } })}
+                        className="text-[#718096] hover:text-white p-2"
+                      >
+                        →
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         setConfirmRemoveFriend({
@@ -572,7 +598,8 @@ function ProfilePage() {
                       <X size={14} />
                     </button>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
 

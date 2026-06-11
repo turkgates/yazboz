@@ -109,37 +109,45 @@ export async function searchProfileByUsername(username: string) {
 // ── Groups ────────────────────────────────────────────────────────────────
 
 export async function fetchMyGroups(userId: string) {
-  const { data, error } = await supabase
+  const { data: memberships, error: memberError } = await supabase
     .from('group_members')
-    .select(`
-      role,
-      joined_at,
-      groups (
-        id,
-        name,
-        invite_code,
-        owner_id,
-        created_at
-      )
-    `)
+    .select('group_id, role, joined_at')
     .eq('user_id', userId)
     .order('joined_at', { ascending: false })
 
-  if (error) {
-    console.error('fetchMyGroups error:', error)
-    return { data: [] as Group[], error }
+  console.log('Grup üyelikleri:', memberships, 'Hata:', memberError)
+
+  if (memberError) {
+    console.error('fetchMyGroups memberships error:', memberError)
+    return { data: [] as Group[], error: memberError }
   }
 
-  const groups: Group[] = []
-  for (const row of data ?? []) {
-    const g = row.groups as Group | Group[] | null
-    const group = Array.isArray(g) ? g[0] : g
-    if (group) {
-      groups.push({ ...group, myRole: row.role as 'admin' | 'member' })
-    }
+  if (!memberships?.length) {
+    return { data: [] as Group[], error: null }
   }
 
-  return { data: groups, error: null }
+  const groupIds = memberships.map((m) => m.group_id)
+  const { data: groups, error: groupsError } = await supabase
+    .from('groups')
+    .select('id, name, invite_code, owner_id, created_at')
+    .in('id', groupIds)
+
+  console.log('Gruplar:', groups, 'Hata:', groupsError)
+
+  if (groupsError) {
+    console.error('fetchMyGroups groups error:', groupsError)
+    return { data: [] as Group[], error: groupsError }
+  }
+
+  const roleMap = Object.fromEntries(memberships.map((m) => [m.group_id, m.role]))
+  const result: Group[] = (groups ?? []).map((g) => ({
+    ...g,
+    myRole: roleMap[g.id] as 'admin' | 'member',
+  }))
+
+  console.log('İşlenmiş gruplar:', result)
+
+  return { data: result, error: null }
 }
 
 export async function fetchGroupById(groupId: string) {
@@ -152,6 +160,8 @@ export async function fetchGroupMembers(groupId: string) {
     .select('id, role, joined_at, user_id')
     .eq('group_id', groupId)
 
+  console.log('Üyeler (group_members):', members, 'Hata:', error)
+
   if (error) {
     console.error('Üye hatası:', error)
     return { data: [] as GroupMember[], error }
@@ -160,10 +170,12 @@ export async function fetchGroupMembers(groupId: string) {
   const userIds = (members ?? []).map((m) => m.user_id)
   if (!userIds.length) return { data: [] as GroupMember[], error: null }
 
-  const { data: profiles } = await supabase
+  const { data: profiles, error: profileError } = await supabase
     .from('profiles')
     .select('id, display_name, username, avatar_url')
     .in('id', userIds)
+
+  if (profileError) console.error('Üye profil hatası:', profileError)
 
   const profileMap = Object.fromEntries(
     (profiles ?? []).map((p) => [p.id, p])
@@ -177,6 +189,8 @@ export async function fetchGroupMembers(groupId: string) {
     joined_at: m.joined_at,
     profiles: profileMap[m.user_id] ?? undefined,
   }))
+
+  console.log('Üyeler (işlenmiş):', result)
 
   return { data: result, error: null }
 }

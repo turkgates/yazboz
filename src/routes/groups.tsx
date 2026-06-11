@@ -29,7 +29,9 @@ function GroupsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setLoading(true)
-    const { data } = await fetchMyGroups(user.id)
+    const { data, error } = await fetchMyGroups(user.id)
+    console.log('Gruplar:', data, 'Hata:', error)
+    if (error) console.error('Gruplar yüklenemedi:', error)
     setGroups(data ?? [])
     setLoading(false)
   }
