@@ -14,7 +14,7 @@ import type { Game, Group, GroupMember, Round } from '@/types'
 import { BackButton } from '@/components/layout/BackButton'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { QRCodeSVG } from 'qrcode.react'
-import { Check, Copy, QrCode, LogOut } from 'lucide-react'
+import { Check, Copy, QrCode, LogOut, Trash2 } from 'lucide-react'
 import { getGameWinners } from '@/lib/calculations'
 import { getWinnersCount } from '@/lib/gameTypes'
 import { computeGameTotals } from '@/lib/statsUtils'
@@ -150,6 +150,24 @@ function GroupDetailPage() {
     }
   }
 
+  const handleDeleteGroup = async () => {
+    const confirmed = window.confirm(
+      'Grubu silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.'
+    )
+    if (!confirmed) return
+
+    await supabase.from('group_members').delete().eq('group_id', groupId)
+
+    const { error } = await supabase.from('groups').delete().eq('id', groupId)
+
+    if (error) {
+      alert('Grup silinemedi: ' + error.message)
+      return
+    }
+
+    navigate({ to: '/groups' })
+  }
+
   const isAdmin = members.some((m) => m.user_id === userId && m.role === 'admin')
 
   if (loading) {
@@ -221,6 +239,16 @@ function GroupDetailPage() {
               </button>
             </div>
           </div>
+          {isOwner && (
+            <button
+              type="button"
+              onClick={handleDeleteGroup}
+              className="text-red-400 hover:text-red-300 flex items-center gap-1 text-sm mt-4"
+            >
+              <Trash2 size={16} />
+              Grubu Sil
+            </button>
+          )}
         </div>
 
         <div>

@@ -8,14 +8,14 @@ import {
   fetchFriends,
   fetchPendingRequests,
   fetchSentRequests,
-  sendFriendRequest,
-  respondToFriendRequest,
   removeFriend,
   searchProfileByUsername,
   fetchMyGroups,
   getSupabaseErrorMessage,
   areFriends,
+  respondToFriendRequest,
 } from '@/lib/socialSupabase'
+import { sendFriendRequest, acceptFriendRequest } from '@/lib/friendUtils'
 import type { Friend, FriendRequest, Group, Profile } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
@@ -23,6 +23,9 @@ import { Camera, LogOut, Pencil, UserPlus, Users, X } from 'lucide-react'
 import { PlayerStats } from '@/components/PlayerStats'
 
 export const Route = createFileRoute('/profile')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tab: (search.tab as 'stats' | 'groups' | 'friends' | undefined) ?? undefined,
+  }),
   beforeLoad: async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) throw redirect({ to: '/auth' })
@@ -34,11 +37,12 @@ type Tab = 'stats' | 'groups' | 'friends'
 
 function ProfilePage() {
   const navigate = useNavigate()
+  const { tab: tabFromSearch } = Route.useSearch()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [userId, setUserId] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [activeTab, setActiveTab] = useState<Tab>('stats')
+  const [activeTab, setActiveTab] = useState<Tab>(tabFromSearch ?? 'stats')
   const [loading, setLoading] = useState(true)
 
   // Groups
@@ -74,6 +78,10 @@ function ProfilePage() {
   } | null>(null)
   const [responding, setResponding] = useState(false)
   const [removingFriend, setRemovingFriend] = useState(false)
+
+  useEffect(() => {
+    if (tabFromSearch) setActiveTab(tabFromSearch)
+  }, [tabFromSearch])
 
   useEffect(() => {
     loadAll()
@@ -238,7 +246,11 @@ function ProfilePage() {
         return
       }
 
-      await sendFriendRequest(uid, receiverId)
+      const receiverName =
+        searchResult && searchResult !== 'not_found'
+          ? searchResult.display_name ?? 'Kullanıcı'
+          : 'Kullanıcı'
+      await sendFriendRequest(receiverId, receiverName)
 
       const [sentRes, friendsRes] = await Promise.all([
         fetchSentRequests(uid),
@@ -267,7 +279,9 @@ function ProfilePage() {
     setResponding(true)
     setAddError('')
     try {
-      await respondToFriendRequest(req.id, true)
+      const senderName = req.sender_profile?.display_name ?? 'Arkadaş'
+      const senderAvatar = req.sender_profile?.avatar_url ?? null
+      await acceptFriendRequest(req.id, req.sender_id, senderName, senderAvatar)
       if (userId) await refreshFriendData(userId)
     } catch (err: unknown) {
       console.error('İstek kabul hatası:', err)

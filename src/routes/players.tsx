@@ -9,7 +9,8 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { supabase, deletePlayer } from '@/lib/supabase'
-import { searchProfileByUsername, sendFriendRequest, getSupabaseErrorMessage, removeFriend } from '@/lib/socialSupabase'
+import { searchProfileByUsername, getSupabaseErrorMessage, removeFriend } from '@/lib/socialSupabase'
+import { sendFriendRequest } from '@/lib/friendUtils'
 import type { SavedPlayer } from '@/types'
 import { Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
@@ -129,7 +130,11 @@ function PlayersPage() {
         setFriendError('Kendine istek gönderemezsin')
         return
       }
-      await sendFriendRequest(userId, receiverId)
+      const receiverName =
+        searchResult && searchResult !== 'not_found'
+          ? searchResult.display_name ?? 'Kullanıcı'
+          : 'Kullanıcı'
+      await sendFriendRequest(receiverId, receiverName)
       setShowFriendModal(false)
       setSearchQuery('')
       setSearchResult(undefined)

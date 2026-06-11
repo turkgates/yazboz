@@ -8,6 +8,7 @@ import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Dices }
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
 import { getGameTypeLabel } from '@/lib/gameTypes'
+import { NotificationBell } from '@/components/NotificationBell'
 
 const PAGE_SIZE = 5
 
@@ -104,14 +105,15 @@ function HomePage() {
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center justify-between py-3 max-w-lg mx-auto">
-          <h1 className="text-lg font-bold text-white">Okey Yazboz</h1>
+          <h1 className="text-xl font-bold text-white">Okey Yazboz</h1>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-[#a0aec0] hidden sm:inline">
-              {getGreeting()}, {displayName} 👋
+            <NotificationBell />
+            <span className="text-sm text-gray-300 hidden sm:inline">
+              {getGreeting()}, {displayName}
             </span>
             <button
               onClick={handleSignOut}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#718096] hover:text-white transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-gray-400 hover:text-white transition-colors"
               title="Çıkış Yap"
             >
               <LogOut size={18} />
@@ -120,7 +122,7 @@ function HomePage() {
         </div>
         {displayName && (
           <p className="text-sm text-[#718096] pb-3 max-w-lg mx-auto sm:hidden">
-            {getGreeting()}, {displayName} 👋
+            {getGreeting()}, {displayName}
           </p>
         )}
       </div>

@@ -152,6 +152,24 @@ export interface Friend {
   friend_profile?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
 }
 
+export type NotificationType =
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'merge_request'
+  | 'merge_done'
+  | 'merge_notify'
+
+export interface AppNotification {
+  id: string
+  user_id: string
+  type: NotificationType
+  title: string
+  body: string
+  data: Record<string, unknown>
+  is_read: boolean
+  created_at: string
+}
+
 export interface SavedPlayer {
   id: string
   user_id: string

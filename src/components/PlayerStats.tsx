@@ -27,7 +27,9 @@ import { GameResultModal } from '@/components/GameResultModal'
 
 export interface PlayerStatsProps {
   playerName: string
-  ownerUserId: string
+  ownerUserId?: string
+  games?: Game[]
+  roundsByGame?: Record<string, Round[]>
   showHistory?: boolean
 }
 
@@ -199,15 +201,30 @@ function StatCard({ label, value, accent }: { label: string; value: string | num
   )
 }
 
-export function PlayerStats({ playerName, ownerUserId, showHistory = true }: PlayerStatsProps) {
-  const [loading, setLoading] = useState(true)
-  const [allGames, setAllGames] = useState<Game[]>([])
-  const [allRoundsByGame, setAllRoundsByGame] = useState<Record<string, Round[]>>({})
+export function PlayerStats({
+  playerName,
+  ownerUserId,
+  games: externalGames,
+  roundsByGame: externalRoundsByGame,
+  showHistory = true,
+}: PlayerStatsProps) {
+  const [loading, setLoading] = useState(!externalGames)
+  const [allGames, setAllGames] = useState<Game[]>(externalGames ?? [])
+  const [allRoundsByGame, setAllRoundsByGame] = useState<Record<string, Round[]>>(
+    externalRoundsByGame ?? {}
+  )
   const [gameTypeFilter, setGameTypeFilter] = useState<GameTypeFilterKey>('all')
   const [subtypeFilter, setSubtypeFilter] = useState<SubtypeFilterKey>('all')
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
 
   useEffect(() => {
+    if (externalGames) {
+      setAllGames(externalGames)
+      setAllRoundsByGame(externalRoundsByGame ?? {})
+      setLoading(false)
+      return
+    }
+
     if (!playerName || !ownerUserId) return
     setLoading(true)
     fetchPlayerGamesWithRounds(ownerUserId, playerName).then(({ games, roundsByGame }) => {
@@ -215,7 +232,7 @@ export function PlayerStats({ playerName, ownerUserId, showHistory = true }: Pla
       setAllRoundsByGame(roundsByGame)
       setLoading(false)
     })
-  }, [playerName, ownerUserId])
+  }, [playerName, ownerUserId, externalGames, externalRoundsByGame])
 
   const filteredGames = useMemo(
     () => filterGames(allGames, gameTypeFilter, subtypeFilter),

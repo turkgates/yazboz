@@ -1,10 +1,11 @@
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ensureSelfInPlayers, checkPendingMergeRequest } from '@/lib/socialSupabase'
 import type { User } from '@supabase/supabase-js'
 import { BottomNavBar } from '@/components/layout/BottomNavBar'
-import { FriendMergeModal } from '@/components/FriendMergeModal'
+import { PendingMergeModal, MergeRequestModal } from '@/components/MergeRequestModal'
+import { MERGE_OPEN_EVENT } from '@/lib/notificationUtils'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -15,6 +16,11 @@ function RootLayout() {
   const [loading, setLoading] = useState(true)
   const [mergeUserId, setMergeUserId] = useState<string | null>(null)
   const [mergeCheckKey, setMergeCheckKey] = useState(0)
+  const [manualMerge, setManualMerge] = useState<{
+    friendUserId: string
+    friendName: string
+    friendAvatarUrl: string | null
+  } | null>(null)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const hideBottomNav =
     pathname.startsWith('/game/') ||
@@ -46,6 +52,29 @@ function RootLayout() {
     })
   }, [user, mergeCheckKey])
 
+  const openMergeForFriend = useCallback(async (friendUserId: string) => {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name, avatar_url')
+      .eq('id', friendUserId)
+      .maybeSingle<{ display_name: string | null; avatar_url: string | null }>()
+
+    setManualMerge({
+      friendUserId,
+      friendName: profile?.display_name ?? 'Arkadaş',
+      friendAvatarUrl: profile?.avatar_url ?? null,
+    })
+  }, [])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ friendUserId: string }>).detail
+      if (detail?.friendUserId) openMergeForFriend(detail.friendUserId)
+    }
+    window.addEventListener(MERGE_OPEN_EVENT, handler)
+    return () => window.removeEventListener(MERGE_OPEN_EVENT, handler)
+  }, [openMergeForFriend])
+
   if (loading) {
     return (
       <div className="min-h-dvh bg-[#1a1a2e] flex items-center justify-center">
@@ -62,12 +91,21 @@ function RootLayout() {
       <Outlet />
       {!hideBottomNav && <BottomNavBar />}
       {mergeUserId && (
-        <FriendMergeModal
+        <PendingMergeModal
           userId={mergeUserId}
           onDone={() => {
             setMergeUserId(null)
             setMergeCheckKey((k) => k + 1)
           }}
+        />
+      )}
+      {manualMerge && (
+        <MergeRequestModal
+          friendUserId={manualMerge.friendUserId}
+          friendName={manualMerge.friendName}
+          friendAvatarUrl={manualMerge.friendAvatarUrl}
+          onComplete={() => setManualMerge(null)}
+          onSkip={() => setManualMerge(null)}
         />
       )}
     </>

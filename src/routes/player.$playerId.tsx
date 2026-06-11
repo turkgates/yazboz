@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { supabase, fetchPlayerById } from '@/lib/supabase'
-import type { SavedPlayer } from '@/types'
+import type { Game, Round, SavedPlayer } from '@/types'
 import { Pencil } from 'lucide-react'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerFormModal } from '@/components/players/PlayerFormModal'
@@ -24,6 +24,8 @@ function PlayerProfilePage() {
   const [realUsername, setRealUsername] = useState<string | null>(null)
   const [isLinkedFriend, setIsLinkedFriend] = useState(false)
   const [statsPlayerName, setStatsPlayerName] = useState('')
+  const [friendGames, setFriendGames] = useState<Game[] | undefined>()
+  const [friendRoundsByGame, setFriendRoundsByGame] = useState<Record<string, Round[]> | undefined>()
   const [ownerUserId, setOwnerUserId] = useState('')
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -55,12 +57,50 @@ function PlayerProfilePage() {
         displayAvatar = realProfile.avatar_url ?? playerData.avatar_url
         username = realProfile.username
       }
+
+      const targetUserId = playerData.linked_user_id
+      const statsName = displayName
+
+      const { data: allFriendGames } = await supabase
+        .from('games')
+        .select('*')
+        .eq('user_id', targetUserId)
+        .eq('status', 'finished')
+        .order('created_at', { ascending: false })
+
+      const relevantGames = (allFriendGames ?? []).filter((g) =>
+        (g.players as string[]).some(
+          (p) => p.toLowerCase() === statsName.toLowerCase()
+        )
+      ) as Game[]
+
+      const gameIds = relevantGames.map((g) => g.id)
+      let roundsByGame: Record<string, Round[]> = {}
+
+      if (gameIds.length > 0) {
+        const { data: friendRounds } = await supabase
+          .from('rounds')
+          .select('*')
+          .in('game_id', gameIds)
+
+        for (const round of (friendRounds ?? []) as Round[]) {
+          if (!roundsByGame[round.game_id]) roundsByGame[round.game_id] = []
+          roundsByGame[round.game_id].push(round)
+        }
+      }
+
+      setFriendGames(relevantGames)
+      setFriendRoundsByGame(roundsByGame)
+      setStatsPlayerName(statsName)
+    } else {
+      setFriendGames(undefined)
+      setFriendRoundsByGame(undefined)
+      setStatsPlayerName(playerData.name)
     }
 
     setPlayer({ ...playerData, name: displayName, avatar_url: displayAvatar })
     setRealUsername(username)
     setIsLinkedFriend(linked)
-    setStatsPlayerName(playerData.name)
     setOwnerUserId(user.id)
     setLoading(false)
   }
@@ -116,7 +156,9 @@ function PlayerProfilePage() {
 
         <PlayerStats
           playerName={statsPlayerName}
-          ownerUserId={ownerUserId}
+          ownerUserId={isLinkedFriend ? undefined : ownerUserId}
+          games={friendGames}
+          roundsByGame={friendRoundsByGame}
           showHistory
         />
       </div>
