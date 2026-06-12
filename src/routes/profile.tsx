@@ -15,7 +15,8 @@ import {
   areFriends,
   respondToFriendRequest,
 } from '@/lib/socialSupabase'
-import { sendFriendRequest, acceptFriendRequest } from '@/lib/friendUtils'
+import { sendFriendRequest, acceptFriendRequest, type MergePromptTarget } from '@/lib/friendUtils'
+import { MergeRequestModal } from '@/components/MergeRequestModal'
 import type { Friend, FriendRequest, Group, Profile } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
@@ -78,6 +79,8 @@ function ProfilePage() {
   } | null>(null)
   const [responding, setResponding] = useState(false)
   const [removingFriend, setRemovingFriend] = useState(false)
+  const [showMergeModal, setShowMergeModal] = useState(false)
+  const [mergeTarget, setMergeTarget] = useState<(MergePromptTarget & { requestId?: string }) | null>(null)
 
   useEffect(() => {
     if (tabFromSearch) setActiveTab(tabFromSearch)
@@ -281,8 +284,12 @@ function ProfilePage() {
     try {
       const senderName = req.sender_profile?.display_name ?? 'Arkadaş'
       const senderAvatar = req.sender_profile?.avatar_url ?? null
-      await acceptFriendRequest(req.id, req.sender_id, senderName, senderAvatar)
+      const target = await acceptFriendRequest(req.id, req.sender_id, senderName, senderAvatar)
       if (userId) await refreshFriendData(userId)
+      if (target) {
+        setMergeTarget({ ...target, requestId: req.id })
+        setShowMergeModal(true)
+      }
     } catch (err: unknown) {
       console.error('İstek kabul hatası:', err)
       setAddError(getSupabaseErrorMessage(err, 'İstek kabul edilemedi'))
@@ -670,6 +677,26 @@ function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Birleştirme modalı */}
+      {showMergeModal && mergeTarget && (
+        <MergeRequestModal
+          friendUserId={mergeTarget.userId}
+          friendName={mergeTarget.name}
+          friendAvatarUrl={mergeTarget.avatarUrl}
+          friendRequestId={mergeTarget.requestId}
+          onComplete={() => {
+            setShowMergeModal(false)
+            setMergeTarget(null)
+            if (userId) refreshFriendData(userId)
+          }}
+          onSkip={() => {
+            setShowMergeModal(false)
+            setMergeTarget(null)
+            if (userId) refreshFriendData(userId)
+          }}
+        />
+      )}
 
       {/* Arkadaş silme onayı */}
       {confirmRemoveFriend && (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Bell, X } from 'lucide-react'
+import { Bell, X, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   fetchNotifications,
@@ -9,8 +9,6 @@ import {
   dispatchMergeModal,
   MERGE_OPEN_EVENT,
 } from '@/lib/notificationUtils'
-import { acceptFriendRequest } from '@/lib/friendUtils'
-import { respondToFriendRequest } from '@/lib/socialSupabase'
 import type { AppNotification } from '@/types'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
@@ -49,7 +47,6 @@ export function NotificationBell() {
   const [userId, setUserId] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [showPanel, setShowPanel] = useState(false)
-  const [respondingId, setRespondingId] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
   const unreadCount = notifications.filter((n) => !n.is_read).length
@@ -104,43 +101,6 @@ export function NotificationBell() {
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
   }
 
-  const handleAcceptRequest = async (notification: AppNotification) => {
-    const requestId = notification.data?.request_id as string | undefined
-    const senderId = notification.data?.sender_id as string | undefined
-    const senderName = (notification.data?.sender_name as string) ?? 'Arkadaş'
-    if (!requestId || !senderId) return
-
-    setRespondingId(notification.id)
-    try {
-      await acceptFriendRequest(requestId, senderId, senderName, null)
-      await markNotificationRead(notification.id)
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notification.id ? { ...n, is_read: true } : n))
-      )
-    } catch {
-      await respondToFriendRequest(requestId, true)
-      await markNotificationRead(notification.id)
-    } finally {
-      setRespondingId(null)
-    }
-  }
-
-  const handleRejectRequest = async (notification: AppNotification) => {
-    const requestId = notification.data?.request_id as string | undefined
-    if (!requestId) return
-
-    setRespondingId(notification.id)
-    try {
-      await respondToFriendRequest(requestId, false)
-      await markNotificationRead(notification.id)
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notification.id ? { ...n, is_read: true } : n))
-      )
-    } finally {
-      setRespondingId(null)
-    }
-  }
-
   const handleNotificationClick = async (notification: AppNotification) => {
     if (!notification.is_read) {
       await markNotificationRead(notification.id)
@@ -152,7 +112,7 @@ export function NotificationBell() {
     switch (notification.type) {
       case 'friend_request':
         setShowPanel(false)
-        navigate({ to: '/profile', search: { tab: 'friends' } })
+        navigate({ to: '/players' })
         break
       case 'merge_request': {
         const friendUserId =
@@ -173,6 +133,17 @@ export function NotificationBell() {
       default:
         break
     }
+  }
+
+  const goToPlayers = async (notification: AppNotification) => {
+    if (!notification.is_read) {
+      await markNotificationRead(notification.id)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notification.id ? { ...n, is_read: true } : n))
+      )
+    }
+    setShowPanel(false)
+    navigate({ to: '/players' })
   }
 
   return (
@@ -231,55 +202,54 @@ export function NotificationBell() {
                       !notification.is_read ? 'bg-[#0f3460]/30' : ''
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleNotificationClick(notification)}
-                      className="w-full text-left"
-                    >
-                      <div className="flex gap-3">
-                        <span className="text-lg shrink-0">{getNotificationIcon(notification.type)}</span>
-                        {(notification.type === 'friend_request' ||
-                          notification.type === 'friend_accepted' ||
-                          notification.type === 'merge_request') && (
+                    {isFriendRequest ? (
+                      <>
+                        <div className="flex gap-3">
+                          <span className="text-lg shrink-0">{getNotificationIcon(notification.type)}</span>
                           <PlayerAvatar name={name} avatarUrl={avatarUrl} size={36} />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm leading-snug">{notification.body}</p>
-                          <p className="text-[#718096] text-xs mt-1">
-                            {formatDistanceToNow(notification.created_at)}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm leading-snug">{notification.body}</p>
+                            <p className="text-[#718096] text-xs mt-1 italic">
+                              Arkadaşlar sayfasından yanıtlayabilirsiniz
+                            </p>
+                            <p className="text-[#718096] text-xs mt-1">
+                              {formatDistanceToNow(notification.created_at)}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-
-                    {isFriendRequest && (
-                      <div className="flex gap-2 mt-2 ml-9">
                         <button
                           type="button"
-                          disabled={respondingId === notification.id}
-                          onClick={() => handleAcceptRequest(notification)}
-                          className="flex-1 bg-[#e94560] text-white text-xs font-bold py-1.5 rounded-lg disabled:opacity-50"
+                          onClick={() => goToPlayers(notification)}
+                          className="mt-2 ml-9 flex items-center gap-1 text-[#e94560] text-xs font-semibold"
                         >
-                          Kabul Et
+                          → Arkadaşlar
+                          <ChevronRight size={14} />
                         </button>
-                        <button
-                          type="button"
-                          disabled={respondingId === notification.id}
-                          onClick={() => handleRejectRequest(notification)}
-                          className="flex-1 bg-[#0f3460] text-[#a0aec0] text-xs font-semibold py-1.5 rounded-lg disabled:opacity-50"
-                        >
-                          Reddet
-                        </button>
-                      </div>
-                    )}
-
-                    {isMergeRequest && (
+                      </>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => handleNotificationClick(notification)}
-                        className="mt-2 ml-9 text-[#e94560] text-xs font-semibold"
+                        className="w-full text-left"
                       >
-                        Görüntüle
+                        <div className="flex gap-3">
+                          <span className="text-lg shrink-0">{getNotificationIcon(notification.type)}</span>
+                          {(notification.type === 'friend_accepted' ||
+                            notification.type === 'merge_request') && (
+                            <PlayerAvatar name={name} avatarUrl={avatarUrl} size={36} />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm leading-snug">{notification.body}</p>
+                            <p className="text-[#718096] text-xs mt-1">
+                              {formatDistanceToNow(notification.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        {isMergeRequest && (
+                          <span className="mt-2 ml-9 inline-block text-[#e94560] text-xs font-semibold">
+                            Görüntüle
+                          </span>
+                        )}
                       </button>
                     )}
                   </div>

@@ -156,11 +156,14 @@ function GroupDetailPage() {
     )
     if (!confirmed) return
 
-    await supabase.from('group_members').delete().eq('group_id', groupId)
-
-    const { error } = await supabase.from('groups').delete().eq('id', groupId)
+    const { error } = await supabase
+      .from('groups')
+      .delete()
+      .eq('id', groupId)
+      .eq('owner_id', userId)
 
     if (error) {
+      console.error('Grup silme hatası:', error)
       alert('Grup silinemedi: ' + error.message)
       return
     }

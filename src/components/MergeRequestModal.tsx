@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   checkPendingMergeRequest,
   markMergePrompted,
-  countGamesForPlayerName,
   type PendingMergeRequest,
 } from '@/lib/socialSupabase'
 import { performMerge, skipMerge } from '@/lib/friendUtils'
@@ -13,6 +13,7 @@ export interface MergeRequestModalProps {
   friendUserId: string
   friendName: string
   friendAvatarUrl: string | null
+  friendRequestId?: string
   onComplete: () => void
   onSkip: () => void
 }
@@ -20,7 +21,7 @@ export interface MergeRequestModalProps {
 interface LocalPlayerOption {
   id: string
   name: string
-  gameCount: number
+  avatar_url: string | null
   isSuggested: boolean
 }
 
@@ -28,11 +29,12 @@ export function MergeRequestModal({
   friendUserId,
   friendName,
   friendAvatarUrl,
+  friendRequestId,
   onComplete,
   onSkip,
 }: MergeRequestModalProps) {
   const [localPlayers, setLocalPlayers] = useState<LocalPlayerOption[]>([])
-  const [selectedId, setSelectedId] = useState<string | 'skip' | null>(null)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | 'none' | null>(null)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
 
@@ -50,58 +52,57 @@ export function MergeRequestModal({
 
     const { data: locals } = await supabase
       .from('players')
-      .select('id, name')
+      .select('id, name, avatar_url')
       .eq('user_id', user.id)
       .is('linked_user_id', null)
       .order('name')
 
-    const withCounts = await Promise.all(
-      (locals ?? []).map(async (p) => ({
-        id: p.id,
-        name: p.name,
-        gameCount: await countGamesForPlayerName(user.id, p.name),
-        isSuggested: p.name.trim().toLowerCase() === friendName.trim().toLowerCase(),
-      }))
-    )
+    const players = (locals ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      avatar_url: p.avatar_url,
+      isSuggested: p.name.trim().toLowerCase() === friendName.trim().toLowerCase(),
+    }))
 
-    const suggested = withCounts.find((p) => p.isSuggested)
-    setLocalPlayers(withCounts)
-    setSelectedId(suggested?.id ?? (withCounts.length > 0 ? withCounts[0].id : 'skip'))
+    const suggested = players.find((p) => p.isSuggested)
+    setLocalPlayers(players)
+    setSelectedPlayerId(suggested?.id ?? (players.length > 0 ? players[0].id : 'none'))
     setLoading(false)
   }
 
-  const handleMerge = async () => {
-    if (!selectedId || selectedId === 'skip') {
-      await handleSkip()
-      return
-    }
+  const finishModal = async () => {
+    if (friendRequestId) await markMergePrompted(friendRequestId)
+  }
 
-    const local = localPlayers.find((p) => p.id === selectedId)
-    if (!local) return
+  const handleConfirm = async () => {
+    if (!selectedPlayerId) return
 
     setProcessing(true)
     try {
-      await performMerge(selectedId, local.name, friendUserId, {
+      if (selectedPlayerId === 'none') {
+        await skipMerge(friendUserId)
+        await finishModal()
+        onSkip()
+        return
+      }
+
+      const local = localPlayers.find((p) => p.id === selectedPlayerId)
+      if (!local) return
+
+      await performMerge(selectedPlayerId, local.name, friendUserId, {
         display_name: friendName,
         avatar_url: friendAvatarUrl,
       })
+      await finishModal()
       onComplete()
     } finally {
       setProcessing(false)
     }
   }
 
-  const handleSkip = async () => {
-    setProcessing(true)
-    try {
-      await skipMerge(friendUserId)
-      onSkip()
-    } finally {
-      setProcessing(false)
-    }
-  }
-
   if (loading) return null
+
+  const suggested = localPlayers.find((p) => p.isSuggested)
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/70 px-4 pb-safe-bottom">
@@ -116,49 +117,59 @@ export function MergeRequestModal({
         </div>
 
         <p className="text-[#718096] text-xs font-semibold uppercase mb-2">Yerel oyuncu seç</p>
-        <div className="flex flex-col gap-2 mb-4 max-h-48 overflow-y-auto">
-          {localPlayers.map((p) => (
+        <div className="flex flex-col gap-2 mb-4 max-h-52 overflow-y-auto">
+          {localPlayers.map((player) => (
             <label
-              key={p.id}
-              className={`flex items-center gap-3 border rounded-xl p-3 cursor-pointer transition-colors ${
-                selectedId === p.id
-                  ? 'border-[#e94560] bg-[#0f3460]/60'
-                  : 'border-[#2d3748] bg-[#0f3460]/30'
-              }`}
+              key={player.id}
+              className="flex items-center gap-3 p-3 rounded-lg cursor-pointer border border-gray-700 hover:border-yellow-500 transition-colors"
+              style={{
+                borderColor: selectedPlayerId === player.id ? '#EAB308' : undefined,
+                background: selectedPlayerId === player.id ? 'rgba(234,179,8,0.1)' : undefined,
+              }}
             >
               <input
                 type="radio"
-                name="merge-player"
-                checked={selectedId === p.id}
-                onChange={() => setSelectedId(p.id)}
-                className="accent-[#e94560]"
+                name="mergePlayer"
+                value={player.id}
+                checked={selectedPlayerId === player.id}
+                onChange={() => setSelectedPlayerId(player.id)}
+                className="hidden"
               />
+              <PlayerAvatar name={player.name} avatarUrl={player.avatar_url} size={40} />
               <div className="flex-1">
-                <p className="text-white text-sm font-medium">
-                  {p.name} ({p.gameCount} oyun)
-                  {p.isSuggested && (
-                    <span className="ml-2 text-[#f6ad55] text-xs">⭐ Öneri</span>
-                  )}
-                </p>
+                <p className="text-white font-medium">{player.name}</p>
+                {player.id === suggested?.id && (
+                  <p className="text-yellow-400 text-xs">⭐ Öneri - Aynı isim</p>
+                )}
               </div>
+              {selectedPlayerId === player.id && (
+                <span className="text-yellow-400">✓</span>
+              )}
             </label>
           ))}
 
           <label
-            className={`flex items-center gap-3 border rounded-xl p-3 cursor-pointer transition-colors ${
-              selectedId === 'skip'
-                ? 'border-[#e94560] bg-[#0f3460]/60'
-                : 'border-[#2d3748] bg-[#0f3460]/30'
-            }`}
+            className="flex items-center gap-3 p-3 rounded-lg cursor-pointer border border-gray-700 hover:border-yellow-500 transition-colors"
+            style={{
+              borderColor: selectedPlayerId === 'none' ? '#EAB308' : undefined,
+              background: selectedPlayerId === 'none' ? 'rgba(234,179,8,0.1)' : undefined,
+            }}
           >
             <input
               type="radio"
-              name="merge-player"
-              checked={selectedId === 'skip'}
-              onChange={() => setSelectedId('skip')}
-              className="accent-[#e94560]"
+              name="mergePlayer"
+              value="none"
+              checked={selectedPlayerId === 'none'}
+              onChange={() => setSelectedPlayerId('none')}
+              className="hidden"
             />
-            <p className="text-[#a0aec0] text-sm">Birleştirme yapma</p>
+            <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center shrink-0">
+              <X size={20} className="text-gray-400" />
+            </div>
+            <p className="text-gray-400">Birleştirme yapma</p>
+            {selectedPlayerId === 'none' && (
+              <span className="text-yellow-400 ml-auto">✓</span>
+            )}
           </label>
         </div>
 
@@ -166,24 +177,14 @@ export function MergeRequestModal({
           Seçilen oyuncunun tüm istatistikleri arkadaşınızla birleştirilecek.
         </p>
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleMerge}
-            disabled={processing || !selectedId}
-            className="flex-1 bg-[#e94560] disabled:opacity-50 text-white text-sm font-bold py-2.5 rounded-xl"
-          >
-            {processing ? '...' : 'Birleştir'}
-          </button>
-          <button
-            type="button"
-            onClick={handleSkip}
-            disabled={processing}
-            className="flex-1 bg-[#0f3460] text-[#a0aec0] text-sm font-semibold py-2.5 rounded-xl"
-          >
-            Atla
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={processing || !selectedPlayerId}
+          className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 rounded-lg text-black font-bold"
+        >
+          {processing ? '...' : selectedPlayerId === 'none' ? 'Atla' : 'Birleştir'}
+        </button>
       </div>
     </div>
   )
@@ -206,11 +207,6 @@ export function PendingMergeModal({ userId, onDone }: PendingMergeModalProps) {
     })
   }, [userId, onDone])
 
-  const handleComplete = async () => {
-    if (request) await markMergePrompted(request.id)
-    onDone()
-  }
-
   if (loading || !request) return null
 
   const friendName = request.friendProfile?.display_name ?? 'Arkadaş'
@@ -221,8 +217,9 @@ export function PendingMergeModal({ userId, onDone }: PendingMergeModalProps) {
       friendUserId={request.friendUserId}
       friendName={friendName}
       friendAvatarUrl={friendAvatarUrl}
-      onComplete={handleComplete}
-      onSkip={handleComplete}
+      friendRequestId={request.id}
+      onComplete={onDone}
+      onSkip={onDone}
     />
   )
 }

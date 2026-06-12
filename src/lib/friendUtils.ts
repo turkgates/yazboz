@@ -4,7 +4,6 @@ import {
   respondToFriendRequest,
   mergePlayerWithFriend,
   createLinkedFriendPlayer,
-  checkPendingMergeRequest,
 } from '@/lib/socialSupabase'
 import { createNotification, dispatchMergeModal } from '@/lib/notificationUtils'
 import type { Profile } from '@/types'
@@ -134,8 +133,7 @@ export async function onFriendshipEstablished(
   })
 
   await updateCrossAvatars(currentUserId, friendId, friendAvatarUrl)
-  await addFriendToPlayersList(friendId, friendName, friendAvatarUrl)
-  await checkAndPromptMerge(currentUserId, friendId, friendName)
+  return checkAndPromptMerge(currentUserId, friendId, friendName, friendAvatarUrl)
 }
 
 export async function acceptFriendRequest(
@@ -143,9 +141,9 @@ export async function acceptFriendRequest(
   senderId: string,
   senderName: string,
   senderAvatarUrl: string | null
-) {
+): Promise<MergePromptTarget | null> {
   const result = await respondToFriendRequest(requestId, true)
-  if (!result || !('accepted' in result) || !result.accepted) return
+  if (!result || !('accepted' in result) || !result.accepted) return null
 
   const { userId, displayName } = await getCurrentUserProfile()
 
@@ -161,15 +159,24 @@ export async function acceptFriendRequest(
   })
 
   await updateCrossAvatars(userId, senderId, senderAvatarUrl)
-  await addFriendToPlayersList(senderId, senderName, senderAvatarUrl)
-  await checkAndPromptMerge(userId, senderId, senderName)
+  return checkAndPromptMerge(userId, senderId, senderName, senderAvatarUrl, {
+    openModal: false,
+  })
+}
+
+export interface MergePromptTarget {
+  userId: string
+  name: string
+  avatarUrl: string | null
 }
 
 export async function checkAndPromptMerge(
   currentUserId: string,
   friendUserId: string,
-  _friendName: string
-) {
+  friendName: string,
+  friendAvatarUrl: string | null = null,
+  options?: { openModal?: boolean }
+): Promise<MergePromptTarget | null> {
   const { displayName: currentUserName } = await getCurrentUserProfile()
 
   const { data: existing } = await supabase
@@ -179,12 +186,22 @@ export async function checkAndPromptMerge(
     .eq('target_id', friendUserId)
     .maybeSingle<{ status: string }>()
 
-  if (existing?.status === 'accepted' || existing?.status === 'skipped') return
+  if (existing?.status === 'accepted' || existing?.status === 'skipped') return null
 
-  const pending = await checkPendingMergeRequest(currentUserId)
-  if (pending) {
+  const { data: linkedPlayer } = await supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('linked_user_id', friendUserId)
+    .maybeSingle()
+
+  if (linkedPlayer) return null
+
+  const avatarUrl =
+    friendAvatarUrl ?? (await getProfile(friendUserId))?.avatar_url ?? null
+
+  if (options?.openModal !== false) {
     dispatchMergeModal(friendUserId)
-    return
   }
 
   await createNotification({
@@ -198,6 +215,8 @@ export async function checkAndPromptMerge(
       friend_user_id: currentUserId,
     },
   })
+
+  return { userId: friendUserId, name: friendName, avatarUrl }
 }
 
 export async function performMerge(
