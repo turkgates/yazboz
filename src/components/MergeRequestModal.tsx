@@ -89,7 +89,7 @@ export function MergeRequestModal({
       const local = localPlayers.find((p) => p.id === selectedPlayerId)
       if (!local) return
 
-      await performMerge(selectedPlayerId, local.name, friendUserId, {
+      await performMerge(selectedPlayerId, friendUserId, {
         display_name: friendName,
         avatar_url: friendAvatarUrl,
       })

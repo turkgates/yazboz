@@ -2,11 +2,17 @@ import { supabase } from '@/lib/supabase'
 import {
   sendFriendRequest as rpcSendFriendRequest,
   respondToFriendRequest,
-  mergePlayerWithFriend,
   createLinkedFriendPlayer,
 } from '@/lib/socialSupabase'
 import { createNotification, dispatchMergeModal } from '@/lib/notificationUtils'
 import type { Profile } from '@/types'
+import type { Game } from '@/types'
+
+export const PLAYERS_REFRESH_EVENT = 'yazboz-players-refresh'
+
+export function dispatchPlayersRefresh() {
+  window.dispatchEvent(new CustomEvent(PLAYERS_REFRESH_EVENT))
+}
 
 async function getCurrentUserProfile() {
   const { data: { user } } = await supabase.auth.getUser()
@@ -221,17 +227,148 @@ export async function checkAndPromptMerge(
 
 export async function performMerge(
   localPlayerId: string,
-  localPlayerName: string,
   friendUserId: string,
-  friendProfile: Pick<Profile, 'display_name' | 'avatar_url'>
+  friendProfile: {
+    display_name: string
+    avatar_url: string | null
+  }
 ) {
-  const { userId, displayName } = await getCurrentUserProfile()
+  const { userId: currentUserId, displayName: currentUserName } = await getCurrentUserProfile()
 
-  await mergePlayerWithFriend(userId, localPlayerId, friendUserId)
+  const { data: localPlayer, error: localError } = await supabase
+    .from('players')
+    .select('name')
+    .eq('id', localPlayerId)
+    .eq('user_id', currentUserId)
+    .single<{ name: string }>()
+
+  if (localError || !localPlayer?.name) {
+    throw localError ?? new Error('Yerel oyuncu bulunamadı')
+  }
+
+  const oldName = localPlayer.name
+  const newName = friendProfile.display_name
+
+  console.log('Birleştiriliyor:', oldName, '→', newName)
+
+  const { error: updateError } = await supabase
+    .from('players')
+    .update({
+      name: newName,
+      avatar_url: friendProfile.avatar_url,
+      linked_user_id: friendUserId,
+    })
+    .eq('id', localPlayerId)
+    .eq('user_id', currentUserId)
+
+  if (updateError) throw updateError
+
+  const { data: duplicates } = await supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('linked_user_id', friendUserId)
+    .neq('id', localPlayerId)
+
+  if (duplicates?.length) {
+    const { error: deleteError } = await supabase
+      .from('players')
+      .delete()
+      .eq('user_id', currentUserId)
+      .eq('linked_user_id', friendUserId)
+      .neq('id', localPlayerId)
+
+    if (deleteError) {
+      console.error('Duplicate silme hatası:', deleteError)
+      throw deleteError
+    }
+    console.log('Duplicate silindi:', duplicates.length)
+  }
+
+  if (oldName !== newName) {
+    const { data: affectedGames } = await supabase
+      .from('games')
+      .select('id, players, teams')
+      .eq('user_id', currentUserId)
+
+    for (const game of (affectedGames ?? []) as Game[]) {
+      const playersArr = (game.players ?? []) as string[]
+      if (!playersArr.includes(oldName)) continue
+
+      const newPlayers = playersArr.map((p) => (p === oldName ? newName : p))
+      const teams = game.teams as string[][] | null
+      let newTeams = teams
+      if (teams) {
+        newTeams = teams.map((team) =>
+          team.map((p) => (p === oldName ? newName : p))
+        )
+      }
+
+      const { error: gameError } = await supabase
+        .from('games')
+        .update({ players: newPlayers, teams: newTeams })
+        .eq('id', game.id)
+
+      if (gameError) {
+        console.error('Oyun güncelleme hatası:', gameError)
+        throw gameError
+      }
+
+      const { data: rounds } = await supabase
+        .from('rounds')
+        .select('id, scores, banko_players, indicator_players')
+        .eq('game_id', game.id)
+
+      for (const round of rounds ?? []) {
+        const scores = { ...((round.scores as Record<string, number>) ?? {}) }
+        if (scores[oldName] === undefined) continue
+
+        scores[newName] = scores[oldName]
+        delete scores[oldName]
+
+        let newBankoPlayers = (round.banko_players as string[] | null) ?? null
+        if (newBankoPlayers?.includes(oldName)) {
+          newBankoPlayers = newBankoPlayers.map((p) => (p === oldName ? newName : p))
+        }
+
+        let newIndicatorPlayers = (round.indicator_players as string[] | null) ?? null
+        if (newIndicatorPlayers?.includes(oldName)) {
+          newIndicatorPlayers = newIndicatorPlayers.map((p) => (p === oldName ? newName : p))
+        }
+
+        const { error: roundError } = await supabase
+          .from('rounds')
+          .update({
+            scores,
+            banko_players: newBankoPlayers,
+            indicator_players: newIndicatorPlayers,
+          })
+          .eq('id', round.id)
+
+        if (roundError) {
+          console.error('Round güncelleme hatası:', roundError)
+          throw roundError
+        }
+      }
+    }
+
+    console.log('İsim güncellendi:', oldName, '→', newName)
+  }
+
+  await createNotification({
+    userId: friendUserId,
+    type: 'merge_done',
+    title: 'Profil Birleştirildi',
+    body: `${currentUserName} seni kendi yerel oyuncusuyla birleştirdi. İstatistiklerini kontrol et.`,
+    data: {
+      merged_by: currentUserId,
+      merged_by_name: currentUserName,
+    },
+  })
 
   await supabase.from('merge_requests').upsert(
     {
-      requester_id: userId,
+      requester_id: currentUserId,
       target_id: friendUserId,
       local_player_id: localPlayerId,
       status: 'accepted',
@@ -239,19 +376,8 @@ export async function performMerge(
     { onConflict: 'requester_id,target_id' }
   )
 
-  await createNotification({
-    userId: friendUserId,
-    type: 'merge_done',
-    title: 'Profil Birleştirildi',
-    body: `${displayName} seni kendi yerel oyuncusuyla birleştirdi. İstatistiklerini kontrol et.`,
-    data: {
-      merged_by: userId,
-      merged_by_name: displayName,
-      local_player_name: localPlayerName,
-    },
-  })
-
-  void friendProfile
+  console.log('Birleştirme tamamlandı!')
+  dispatchPlayersRefresh()
 }
 
 export async function skipMerge(friendUserId: string) {
@@ -265,4 +391,5 @@ export async function skipMerge(friendUserId: string) {
     },
     { onConflict: 'requester_id,target_id' }
   )
+  dispatchPlayersRefresh()
 }

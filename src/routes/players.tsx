@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { supabase, deletePlayer } from '@/lib/supabase'
 import { searchProfileByUsername, getSupabaseErrorMessage, removeFriend } from '@/lib/socialSupabase'
-import { sendFriendRequest } from '@/lib/friendUtils'
+import { sendFriendRequest, PLAYERS_REFRESH_EVENT } from '@/lib/friendUtils'
 import type { SavedPlayer } from '@/types'
 import { Plus, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
@@ -96,6 +96,12 @@ function PlayersPage() {
 
   useEffect(() => {
     loadPlayers()
+  }, [])
+
+  useEffect(() => {
+    const handler = () => loadPlayers()
+    window.addEventListener(PLAYERS_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(PLAYERS_REFRESH_EVENT, handler)
   }, [])
 
   const handleDelete = async (playerId: string) => {

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { supabase, fetchPlayerById } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { Pencil } from 'lucide-react'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
@@ -17,6 +17,15 @@ export const Route = createFileRoute('/player/$playerId')({
   component: PlayerProfilePage,
 })
 
+function buildRoundsByGame(rounds: Round[]): Record<string, Round[]> {
+  const map: Record<string, Round[]> = {}
+  for (const round of rounds) {
+    if (!map[round.game_id]) map[round.game_id] = []
+    map[round.game_id].push(round)
+  }
+  return map
+}
+
 function PlayerProfilePage() {
   const { playerId } = Route.useParams()
   const navigate = useNavigate()
@@ -24,9 +33,8 @@ function PlayerProfilePage() {
   const [realUsername, setRealUsername] = useState<string | null>(null)
   const [isLinkedFriend, setIsLinkedFriend] = useState(false)
   const [statsPlayerName, setStatsPlayerName] = useState('')
-  const [friendGames, setFriendGames] = useState<Game[] | undefined>()
-  const [friendRoundsByGame, setFriendRoundsByGame] = useState<Record<string, Round[]> | undefined>()
-  const [ownerUserId, setOwnerUserId] = useState('')
+  const [statsGames, setStatsGames] = useState<Game[]>([])
+  const [statsRoundsByGame, setStatsRoundsByGame] = useState<Record<string, Round[]>>({})
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
 
@@ -34,7 +42,12 @@ function PlayerProfilePage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data: playerData, error } = await fetchPlayerById(playerId)
+    const { data: playerData, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('id', playerId)
+      .single<SavedPlayer>()
+
     if (error || !playerData || playerData.user_id !== user.id) {
       setLoading(false)
       return
@@ -43,65 +56,56 @@ function PlayerProfilePage() {
     let displayName = playerData.name
     let displayAvatar = playerData.avatar_url
     let username: string | null = null
+    let playerName = playerData.name
+    let games: Game[] = []
+    let rounds: Round[] = []
+
     const linked = !!playerData.linked_user_id && playerData.linked_user_id !== user.id
 
     if (playerData.linked_user_id) {
-      const { data: realProfile } = await supabase
+      const { data: friendProfile } = await supabase
         .from('profiles')
-        .select('display_name, username, avatar_url')
+        .select('display_name, avatar_url, username')
         .eq('id', playerData.linked_user_id)
-        .maybeSingle<{ display_name: string | null; username: string | null; avatar_url: string | null }>()
+        .single<{ display_name: string | null; avatar_url: string | null; username: string | null }>()
 
-      if (realProfile) {
-        displayName = realProfile.display_name ?? playerData.name
-        displayAvatar = realProfile.avatar_url ?? playerData.avatar_url
-        username = realProfile.username
+      if (friendProfile) {
+        playerName = friendProfile.display_name ?? playerData.name
+        displayName = playerName
+        displayAvatar = friendProfile.avatar_url ?? playerData.avatar_url
+        username = friendProfile.username
       }
+    }
 
-      const targetUserId = playerData.linked_user_id
-      const statsName = displayName
+    // Birleştirilmiş veya yerel oyuncu: kendi oyunlarımızdan istatistik çek
+    const { data: myGames } = await supabase
+      .from('games')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('status', 'finished')
+      .order('created_at', { ascending: false })
 
-      const { data: allFriendGames } = await supabase
-        .from('games')
+    games = ((myGames ?? []) as Game[]).filter((g) =>
+      (g.players as string[]).some(
+        (p) => p.toLowerCase() === playerName.toLowerCase()
+      )
+    )
+
+    if (games.length) {
+      const { data: myRounds } = await supabase
+        .from('rounds')
         .select('*')
-        .eq('user_id', targetUserId)
-        .eq('status', 'finished')
-        .order('created_at', { ascending: false })
+        .in('game_id', games.map((g) => g.id))
 
-      const relevantGames = (allFriendGames ?? []).filter((g) =>
-        (g.players as string[]).some(
-          (p) => p.toLowerCase() === statsName.toLowerCase()
-        )
-      ) as Game[]
-
-      const gameIds = relevantGames.map((g) => g.id)
-      let roundsByGame: Record<string, Round[]> = {}
-
-      if (gameIds.length > 0) {
-        const { data: friendRounds } = await supabase
-          .from('rounds')
-          .select('*')
-          .in('game_id', gameIds)
-
-        for (const round of (friendRounds ?? []) as Round[]) {
-          if (!roundsByGame[round.game_id]) roundsByGame[round.game_id] = []
-          roundsByGame[round.game_id].push(round)
-        }
-      }
-
-      setFriendGames(relevantGames)
-      setFriendRoundsByGame(roundsByGame)
-      setStatsPlayerName(statsName)
-    } else {
-      setFriendGames(undefined)
-      setFriendRoundsByGame(undefined)
-      setStatsPlayerName(playerData.name)
+      rounds = (myRounds ?? []) as Round[]
     }
 
     setPlayer({ ...playerData, name: displayName, avatar_url: displayAvatar })
     setRealUsername(username)
     setIsLinkedFriend(linked)
-    setOwnerUserId(user.id)
+    setStatsPlayerName(playerName)
+    setStatsGames(games)
+    setStatsRoundsByGame(buildRoundsByGame(rounds))
     setLoading(false)
   }
 
@@ -156,9 +160,8 @@ function PlayerProfilePage() {
 
         <PlayerStats
           playerName={statsPlayerName}
-          ownerUserId={isLinkedFriend ? undefined : ownerUserId}
-          games={friendGames}
-          roundsByGame={friendRoundsByGame}
+          games={statsGames}
+          roundsByGame={statsRoundsByGame}
           showHistory
         />
       </div>
