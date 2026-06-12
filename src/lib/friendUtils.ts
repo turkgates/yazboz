@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabase'
 import {
   sendFriendRequest as rpcSendFriendRequest,
   respondToFriendRequest,
-  createLinkedFriendPlayer,
 } from '@/lib/socialSupabase'
 import { createNotification, dispatchMergeModal } from '@/lib/notificationUtils'
 import type { Profile } from '@/types'
@@ -65,13 +64,57 @@ export async function updateCrossAvatars(
 }
 
 export async function addFriendToPlayersList(
-  friendId: string,
+  friendUserId: string,
   friendName: string,
-  _friendAvatarUrl: string | null
+  friendAvatarUrl: string | null
 ) {
-  const { userId } = await getCurrentUserProfile()
-  await createLinkedFriendPlayer(userId, friendId)
-  void friendName
+  const { userId: currentUserId } = await getCurrentUserProfile()
+
+  const { data: existing } = await supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('linked_user_id', friendUserId)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase
+      .from('players')
+      .update({
+        name: friendName,
+        avatar_url: friendAvatarUrl,
+      })
+      .eq('id', existing.id)
+    return
+  }
+
+  const { data: sameNamePlayer } = await supabase
+    .from('players')
+    .select('id')
+    .eq('user_id', currentUserId)
+    .eq('name', friendName)
+    .is('linked_user_id', null)
+    .maybeSingle()
+
+  if (sameNamePlayer) {
+    await supabase
+      .from('players')
+      .update({
+        linked_user_id: friendUserId,
+        avatar_url: friendAvatarUrl,
+      })
+      .eq('id', sameNamePlayer.id)
+    return
+  }
+
+  const { error } = await supabase.from('players').insert({
+    user_id: currentUserId,
+    name: friendName,
+    avatar_url: friendAvatarUrl,
+    linked_user_id: friendUserId,
+  })
+
+  if (error) throw error
 }
 
 export async function sendFriendRequest(receiverId: string, _receiverName: string) {
@@ -382,7 +425,14 @@ export async function performMerge(
 
 export async function skipMerge(friendUserId: string) {
   const { userId } = await getCurrentUserProfile()
-  await createLinkedFriendPlayer(userId, friendUserId)
+  const profile = await getProfile(friendUserId)
+  if (profile?.display_name) {
+    await addFriendToPlayersList(
+      friendUserId,
+      profile.display_name,
+      profile.avatar_url ?? null
+    )
+  }
   await supabase.from('merge_requests').upsert(
     {
       requester_id: userId,
