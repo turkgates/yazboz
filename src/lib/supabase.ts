@@ -125,6 +125,14 @@ export async function insertRound(roundData: Omit<Round, 'created_at'>) {
     .single<Round>()
 }
 
+// El numarası istemcide hesaplanır: başka cihazdan el girildiyse yerel liste eskimiş olur
+export const DUPLICATE_ROUND_MESSAGE =
+  'Bu el numarası başka bir kayıtla çakıştı. Tablo yenilendi, kontrol edip devam edebilirsin.'
+
+export function isDuplicateRoundError(error: { code?: string } | null) {
+  return error?.code === '23505'
+}
+
 export async function updateRound(roundId: string, updates: Partial<Omit<Round, 'id' | 'game_id' | 'created_at'>>) {
   return supabase
     .from('rounds')

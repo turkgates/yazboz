@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Trophy } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import { supabase, fetchGameWithRounds, fetchPlayers, insertRound, updateGame } from '@/lib/supabase'
+import { supabase, fetchGameWithRounds, fetchPlayers, insertRound, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, updateGame } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import {
@@ -110,8 +110,8 @@ export function BankoluGameView({ gameId }: Props) {
     )
   }
 
-  const handleSave = async (payload: BankoluRoundSavePayload) => {
-    if (!currentGame_) return
+  const handleSave = async (payload: BankoluRoundSavePayload): Promise<boolean> => {
+    if (!currentGame_) return false
     setSaving(true)
     try {
       const roundNumber = rounds.length + 1
@@ -129,7 +129,21 @@ export function BankoluGameView({ gameId }: Props) {
         banko_players: payload.bankoPlayers,
       }
 
-      const savedRound: Round = { ...newRound, created_at: new Date().toISOString() }
+      const { data, error } = await insertRound(newRound)
+
+      if (error) {
+        console.error('Round kayıt hatası:', error)
+        if (isDuplicateRoundError(error)) {
+          setShowEntry(false)
+          await refetchGame()
+          alert(DUPLICATE_ROUND_MESSAGE)
+          return true
+        }
+        alert('El kaydedilemedi: ' + error.message)
+        return false
+      }
+
+      const savedRound: Round = data ?? { ...newRound, created_at: new Date().toISOString() }
       const updatedGame: Game = { ...currentGame_, banko_history: newHistory }
 
       setRounds((prev) => [...prev, savedRound])
@@ -138,7 +152,6 @@ export function BankoluGameView({ gameId }: Props) {
       setCurrentBankos([])
       setShowEntry(false)
 
-      await insertRound(newRound)
       await updateGame(gameId, { banko_history: newHistory })
 
       if (roundNumber >= totalRounds) {
@@ -146,6 +159,7 @@ export function BankoluGameView({ gameId }: Props) {
         await updateGame(gameId, { status: 'finished', finished_at: new Date().toISOString() })
         navigate({ to: '/game-over/$gameId', params: { gameId } })
       }
+      return true
     } finally {
       setSaving(false)
     }
