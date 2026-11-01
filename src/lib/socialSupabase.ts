@@ -229,20 +229,8 @@ export async function createGroup(name: string, ownerId: string): Promise<Group>
       .select()
       .single<Group>()
 
-    if (!error && group) {
-      const { error: memberError } = await supabase.from('group_members').insert({
-        group_id: group.id,
-        user_id: ownerId,
-        role: 'admin',
-      })
-
-      if (memberError) {
-        console.error('Üye ekleme hatası:', memberError)
-        throw memberError
-      }
-
-      return group
-    }
+    // Sahibin admin üyeliğini on_group_created tetikleyicisi ekler
+    if (!error && group) return group
 
     if (error?.code === '23505') {
       lastError = error
@@ -257,70 +245,20 @@ export async function createGroup(name: string, ownerId: string): Promise<Group>
 }
 
 export async function joinGroupByCode(code: string, userId: string): Promise<Group> {
-  const normalizedCode = code.toUpperCase().trim()
-  console.log('Kod aranıyor:', normalizedCode)
+  const { data, error } = await supabase.rpc('join_group_by_invite_code', {
+    p_code: code,
+  })
 
-  const { data: lookupRows, error: groupError } = await supabase
-    .rpc('lookup_group_by_invite_code', { p_code: normalizedCode })
-
-  const group = (lookupRows as Pick<Group, 'id' | 'name' | 'invite_code'>[] | null)?.[0] ?? null
-  console.log('Grup bulundu:', group, 'Hata:', groupError)
-
-  if (groupError || !group) {
-    throw new Error('Geçersiz davet kodu')
+  if (error) {
+    console.error('Katılma hatası detay:', error)
+    throw new Error(error.message)
   }
 
-  const { data: existing } = await supabase
-    .from('group_members')
-    .select('id')
-    .eq('group_id', group.id)
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  console.log('Mevcut üyelik:', existing)
-
-  if (existing) {
-    throw new Error('Zaten bu grubun üyesisin')
-  }
-
-  const { count } = await supabase
-    .from('group_members')
-    .select('*', { count: 'exact', head: true })
-    .eq('group_id', group.id)
-
-  console.log('Üye sayısı:', count)
-
-  if ((count ?? 0) >= 10) {
-    throw new Error('Grup dolu (maksimum 10 üye)')
-  }
-
-  const { data: newMember, error: joinError } = await supabase
-    .from('group_members')
-    .insert({
-      group_id: group.id,
-      user_id: userId,
-      role: 'member',
-    })
-    .select()
-    .single()
-
-  console.log('Katılma sonucu:', newMember, 'Hata:', joinError)
-
-  if (joinError) {
-    console.error('Katılma hatası detay:', joinError)
-    throw new Error('Gruba katılınamadı: ' + joinError.message)
-  }
+  const group = data as Group
 
   await syncGroupMembersToPlayersList(group.id, userId)
 
-  return {
-    id: group.id,
-    name: group.name,
-    invite_code: group.invite_code,
-    owner_id: '',
-    created_at: new Date().toISOString(),
-    myRole: 'member',
-  }
+  return { ...group, myRole: 'member' }
 }
 
 export async function leaveGroup(groupId: string, userId: string) {
@@ -655,114 +593,6 @@ export async function searchPlayersForAutocomplete(userId: string, query: string
   }
 
   return results.filter((p) => p.id || p.isSelf)
-}
-
-export async function mergePlayerWithFriend(
-  userId: string,
-  localPlayerId: string,
-  realUserId: string
-) {
-  const { data: localPlayer, error: localError } = await supabase
-    .from('players')
-    .select('name')
-    .eq('id', localPlayerId)
-    .eq('user_id', userId)
-    .single<{ name: string }>()
-
-  if (localError || !localPlayer) throw localError ?? new Error('Yerel oyuncu bulunamadı')
-
-  const { data: realProfile, error: profileError } = await supabase
-    .from('profiles')
-    .select('display_name, avatar_url')
-    .eq('id', realUserId)
-    .single<Pick<Profile, 'display_name' | 'avatar_url'>>()
-
-  if (profileError || !realProfile?.display_name) {
-    throw profileError ?? new Error('Profil bulunamadı')
-  }
-
-  const oldName = localPlayer.name
-  const newName = realProfile.display_name
-
-  const { error: updateError } = await supabase
-    .from('players')
-    .update({
-      name: newName,
-      avatar_url: realProfile.avatar_url ?? null,
-      linked_user_id: realUserId,
-    })
-    .eq('id', localPlayerId)
-    .eq('user_id', userId)
-
-  if (updateError) throw updateError
-
-  await supabase
-    .from('players')
-    .delete()
-    .eq('user_id', userId)
-    .eq('linked_user_id', realUserId)
-    .neq('id', localPlayerId)
-
-  const { data: games } = await supabase
-    .from('games')
-    .select('id, players, teams')
-    .eq('user_id', userId)
-
-  for (const game of games ?? []) {
-    const playersArr = (game.players ?? []) as string[]
-    if (!playersArr.includes(oldName)) continue
-
-    const newPlayers = playersArr.map((p) => (p === oldName ? newName : p))
-    const teams = game.teams as string[][] | null
-    const newTeams = teams?.map((team) => team.map((p) => (p === oldName ? newName : p))) ?? null
-
-    await supabase
-      .from('games')
-      .update({
-        players: newPlayers,
-        ...(newTeams ? { teams: newTeams } : {}),
-      })
-      .eq('id', game.id)
-
-    const { data: rounds } = await supabase
-      .from('rounds')
-      .select('id, scores, indicator_players, banko_players')
-      .eq('game_id', game.id)
-
-    for (const round of rounds ?? []) {
-      const scores = { ...(round.scores as Record<string, number>) }
-      const indicatorPlayers = [...((round.indicator_players as string[] | null) ?? [])]
-      const bankoPlayers = [...((round.banko_players as string[] | null) ?? [])]
-      let changed = false
-
-      if (scores[oldName] !== undefined) {
-        scores[newName] = scores[oldName]
-        delete scores[oldName]
-        changed = true
-      }
-
-      const newIndicators = indicatorPlayers.map((p) => (p === oldName ? newName : p))
-      if (JSON.stringify(newIndicators) !== JSON.stringify(indicatorPlayers)) {
-        changed = true
-      }
-
-      const newBankos = bankoPlayers.map((p) => (p === oldName ? newName : p))
-      if (JSON.stringify(newBankos) !== JSON.stringify(bankoPlayers)) {
-        changed = true
-      }
-
-      if (!changed) continue
-
-      await supabase
-        .from('rounds')
-        .update({
-          scores,
-          indicator_players: newIndicators,
-          banko_players: newBankos,
-        })
-        .eq('id', round.id)
-    }
-  }
 }
 
 export async function removeFriend(friendId: string) {

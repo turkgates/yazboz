@@ -3,9 +3,10 @@ import {
   sendFriendRequest as rpcSendFriendRequest,
   respondToFriendRequest,
 } from '@/lib/socialSupabase'
-import { createNotification, dispatchMergeModal } from '@/lib/notificationUtils'
+import { dispatchMergeModal, sendNotification } from '@/lib/notificationUtils'
+import { buildPlayerRename, renameKeys, renameValues } from '@/lib/playerRename'
 import type { Profile } from '@/types'
-import type { Game } from '@/types'
+import type { Game, Round } from '@/types'
 
 export const PLAYERS_REFRESH_EVENT = 'yazboz-players-refresh'
 
@@ -13,21 +14,10 @@ export function dispatchPlayersRefresh() {
   window.dispatchEvent(new CustomEvent(PLAYERS_REFRESH_EVENT))
 }
 
-async function getCurrentUserProfile() {
+async function getCurrentUserId() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Oturum bulunamadı')
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('display_name, avatar_url')
-    .eq('id', user.id)
-    .maybeSingle<Pick<Profile, 'display_name' | 'avatar_url'>>()
-
-  return {
-    userId: user.id,
-    displayName: profile?.display_name ?? 'Birisi',
-    avatarUrl: profile?.avatar_url ?? null,
-  }
+  return user.id
 }
 
 async function getProfile(userId: string) {
@@ -68,7 +58,7 @@ export async function addFriendToPlayersList(
   friendName: string,
   friendAvatarUrl: string | null
 ) {
-  const { userId: currentUserId } = await getCurrentUserProfile()
+  const currentUserId = await getCurrentUserId()
 
   const { data: existing } = await supabase
     .from('players')
@@ -118,7 +108,7 @@ export async function addFriendToPlayersList(
 }
 
 export async function sendFriendRequest(receiverId: string, _receiverName: string) {
-  const { userId, displayName } = await getCurrentUserProfile()
+  const userId = await getCurrentUserId()
   const { data: requestId, error } = await rpcSendFriendRequest(userId, receiverId)
   if (error) throw error
   if (!requestId) return
@@ -132,54 +122,27 @@ export async function sendFriendRequest(receiverId: string, _receiverName: strin
   if (!req) return
 
   if (req.status === 'pending') {
-    await createNotification({
-      userId: receiverId,
-      type: 'friend_request',
-      title: 'Arkadaşlık İsteği',
-      body: `${displayName} sana arkadaşlık isteği gönderdi`,
-      data: {
-        sender_id: userId,
-        sender_name: displayName,
-        request_id: requestId,
-      },
-    })
+    await sendNotification(receiverId, 'friend_request')
     return
   }
 
   if (req.status === 'accepted') {
     const friendId = req.receiver_id === userId ? req.sender_id : req.receiver_id
     const friendProfile = await getProfile(friendId)
-    await onFriendshipEstablished(userId, friendId, displayName, friendProfile)
+    await onFriendshipEstablished(userId, friendId, friendProfile)
   }
 }
 
 export async function onFriendshipEstablished(
   currentUserId: string,
   friendId: string,
-  currentUserName: string,
   friendProfile: Pick<Profile, 'display_name' | 'avatar_url'> | null
 ) {
   const friendName = friendProfile?.display_name ?? 'Arkadaş'
   const friendAvatarUrl = friendProfile?.avatar_url ?? null
 
-  await createNotification({
-    userId: friendId,
-    type: 'friend_accepted',
-    title: 'Arkadaşlık İsteği Kabul Edildi',
-    body: `${currentUserName} arkadaşlık isteğini kabul etti`,
-    data: {
-      friend_id: currentUserId,
-      friend_name: currentUserName,
-    },
-  })
-
-  await createNotification({
-    userId: friendId,
-    type: 'merge_notify',
-    title: 'Arkadaşlık',
-    body: `${currentUserName} arkadaşlık isteğini kabul etti`,
-    data: { friend_id: currentUserId, friend_name: currentUserName },
-  })
+  await sendNotification(friendId, 'friend_accepted')
+  await sendNotification(friendId, 'merge_notify')
 
   await updateCrossAvatars(currentUserId, friendId, friendAvatarUrl)
   return checkAndPromptMerge(currentUserId, friendId, friendName, friendAvatarUrl)
@@ -194,18 +157,9 @@ export async function acceptFriendRequest(
   const result = await respondToFriendRequest(requestId, true)
   if (!result || !('accepted' in result) || !result.accepted) return null
 
-  const { userId, displayName } = await getCurrentUserProfile()
+  const userId = await getCurrentUserId()
 
-  await createNotification({
-    userId: senderId,
-    type: 'friend_accepted',
-    title: 'Arkadaşlık İsteği Kabul Edildi',
-    body: `${displayName} arkadaşlık isteğini kabul etti`,
-    data: {
-      friend_id: userId,
-      friend_name: displayName,
-    },
-  })
+  await sendNotification(senderId, 'friend_accepted')
 
   await updateCrossAvatars(userId, senderId, senderAvatarUrl)
   return checkAndPromptMerge(userId, senderId, senderName, senderAvatarUrl, {
@@ -226,8 +180,6 @@ export async function checkAndPromptMerge(
   friendAvatarUrl: string | null = null,
   options?: { openModal?: boolean }
 ): Promise<MergePromptTarget | null> {
-  const { displayName: currentUserName } = await getCurrentUserProfile()
-
   const { data: existing } = await supabase
     .from('merge_requests')
     .select('status')
@@ -253,17 +205,7 @@ export async function checkAndPromptMerge(
     dispatchMergeModal(friendUserId)
   }
 
-  await createNotification({
-    userId: friendUserId,
-    type: 'merge_request',
-    title: 'Profil Birleştirme',
-    body: `${currentUserName} seni yerel oyuncusuyla birleştirmek istiyor`,
-    data: {
-      requester_id: currentUserId,
-      requester_name: currentUserName,
-      friend_user_id: currentUserId,
-    },
-  })
+  await sendNotification(friendUserId, 'merge_request')
 
   return { userId: friendUserId, name: friendName, avatarUrl }
 }
@@ -276,7 +218,7 @@ export async function performMerge(
     avatar_url: string | null
   }
 ) {
-  const { userId: currentUserId, displayName: currentUserName } = await getCurrentUserProfile()
+  const currentUserId = await getCurrentUserId()
 
   const { data: localPlayer, error: localError } = await supabase
     .from('players')
@@ -293,6 +235,68 @@ export async function performMerge(
   const newName = friendProfile.display_name
 
   console.log('Birleştiriliyor:', oldName, '→', newName)
+
+  // Önce eller, sonra oyun, en son oyuncu: yarıda kesilirse birleştirme yeniden denenebilir
+  if (oldName !== newName) {
+    const { data: affectedGames, error: gamesError } = await supabase
+      .from('games')
+      .select('id, players, teams, game_type, game_subtype, banko_history')
+      .eq('user_id', currentUserId)
+
+    if (gamesError) throw gamesError
+
+    for (const game of (affectedGames ?? []) as Game[]) {
+      const playersArr = (game.players ?? []) as string[]
+      if (!playersArr.includes(oldName)) continue
+
+      // Aynı masada iki farklı kişi: birleştirmek skorlardan birini ezerdi
+      if (playersArr.includes(newName)) {
+        console.error('Oyun atlandı, iki isim de oyunda var:', game.id, oldName, newName)
+        continue
+      }
+
+      const { players, teams, keyMap } = buildPlayerRename(game, oldName, newName)
+
+      const { data: rounds, error: roundsError } = await supabase
+        .from('rounds')
+        .select('id, scores, banko_players, indicator_players')
+        .eq('game_id', game.id)
+
+      if (roundsError) throw roundsError
+
+      for (const round of (rounds ?? []) as Pick<Round, 'id' | 'scores' | 'banko_players' | 'indicator_players'>[]) {
+        const { error: roundError } = await supabase
+          .from('rounds')
+          .update({
+            scores: renameKeys(round.scores ?? {}, keyMap),
+            banko_players: round.banko_players && renameValues(round.banko_players, keyMap),
+            indicator_players: round.indicator_players && renameValues(round.indicator_players, keyMap),
+          })
+          .eq('id', round.id)
+
+        if (roundError) {
+          console.error('Round güncelleme hatası:', roundError)
+          throw roundError
+        }
+      }
+
+      const { error: gameError } = await supabase
+        .from('games')
+        .update({
+          players,
+          teams,
+          banko_history: game.banko_history && renameKeys(game.banko_history, keyMap),
+        })
+        .eq('id', game.id)
+
+      if (gameError) {
+        console.error('Oyun güncelleme hatası:', gameError)
+        throw gameError
+      }
+    }
+
+    console.log('İsim güncellendi:', oldName, '→', newName)
+  }
 
   const { error: updateError } = await supabase
     .from('players')
@@ -328,86 +332,7 @@ export async function performMerge(
     console.log('Duplicate silindi:', duplicates.length)
   }
 
-  if (oldName !== newName) {
-    const { data: affectedGames } = await supabase
-      .from('games')
-      .select('id, players, teams')
-      .eq('user_id', currentUserId)
-
-    for (const game of (affectedGames ?? []) as Game[]) {
-      const playersArr = (game.players ?? []) as string[]
-      if (!playersArr.includes(oldName)) continue
-
-      const newPlayers = playersArr.map((p) => (p === oldName ? newName : p))
-      const teams = game.teams as string[][] | null
-      let newTeams = teams
-      if (teams) {
-        newTeams = teams.map((team) =>
-          team.map((p) => (p === oldName ? newName : p))
-        )
-      }
-
-      const { error: gameError } = await supabase
-        .from('games')
-        .update({ players: newPlayers, teams: newTeams })
-        .eq('id', game.id)
-
-      if (gameError) {
-        console.error('Oyun güncelleme hatası:', gameError)
-        throw gameError
-      }
-
-      const { data: rounds } = await supabase
-        .from('rounds')
-        .select('id, scores, banko_players, indicator_players')
-        .eq('game_id', game.id)
-
-      for (const round of rounds ?? []) {
-        const scores = { ...((round.scores as Record<string, number>) ?? {}) }
-        if (scores[oldName] === undefined) continue
-
-        scores[newName] = scores[oldName]
-        delete scores[oldName]
-
-        let newBankoPlayers = (round.banko_players as string[] | null) ?? null
-        if (newBankoPlayers?.includes(oldName)) {
-          newBankoPlayers = newBankoPlayers.map((p) => (p === oldName ? newName : p))
-        }
-
-        let newIndicatorPlayers = (round.indicator_players as string[] | null) ?? null
-        if (newIndicatorPlayers?.includes(oldName)) {
-          newIndicatorPlayers = newIndicatorPlayers.map((p) => (p === oldName ? newName : p))
-        }
-
-        const { error: roundError } = await supabase
-          .from('rounds')
-          .update({
-            scores,
-            banko_players: newBankoPlayers,
-            indicator_players: newIndicatorPlayers,
-          })
-          .eq('id', round.id)
-
-        if (roundError) {
-          console.error('Round güncelleme hatası:', roundError)
-          throw roundError
-        }
-      }
-    }
-
-    console.log('İsim güncellendi:', oldName, '→', newName)
-  }
-
-  await createNotification({
-    userId: friendUserId,
-    type: 'merge_done',
-    title: 'Profil Birleştirildi',
-    body: `${currentUserName} seni kendi yerel oyuncusuyla birleştirdi. İstatistiklerini kontrol et.`,
-    data: {
-      merged_by: currentUserId,
-      merged_by_name: currentUserName,
-    },
-  })
+  await sendNotification(friendUserId, 'merge_done')
 
   await supabase.from('merge_requests').upsert(
     {
@@ -424,7 +349,7 @@ export async function performMerge(
 }
 
 export async function skipMerge(friendUserId: string) {
-  const { userId } = await getCurrentUserProfile()
+  const userId = await getCurrentUserId()
   const profile = await getProfile(friendUserId)
   if (profile?.display_name) {
     await addFriendToPlayersList(

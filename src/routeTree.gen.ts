@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TrackerRouteImport } from './routes/tracker'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PlayersRouteImport } from './routes/players'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
@@ -40,6 +41,11 @@ const StatsRoute = StatsRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
   '/profile': typeof ProfileRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
   '/profile': typeof ProfileRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
   '/profile': typeof ProfileRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/players'
     | '/profile'
+    | '/reset-password'
     | '/settings'
     | '/stats'
     | '/tracker'
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/players'
     | '/profile'
+    | '/reset-password'
     | '/settings'
     | '/stats'
     | '/tracker'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/players'
     | '/profile'
+    | '/reset-password'
     | '/settings'
     | '/stats'
     | '/tracker'
@@ -242,6 +254,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   PlayersRoute: typeof PlayersRoute
   ProfileRoute: typeof ProfileRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
   TrackerRoute: typeof TrackerRoute
@@ -272,6 +285,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -386,6 +406,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   PlayersRoute: PlayersRoute,
   ProfileRoute: ProfileRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
   TrackerRoute: TrackerRoute,
