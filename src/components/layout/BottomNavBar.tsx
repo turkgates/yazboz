@@ -1,13 +1,15 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Home, User, BarChart2, Settings } from 'lucide-react'
+import { Home, User, Users, BarChart2, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { countPendingRequests } from '@/lib/socialSupabase'
+import { PLAYERS_REFRESH_EVENT } from '@/lib/friendUtils'
 
 const NAV_ITEMS = [
   { to: '/home', icon: Home, label: 'Ana Sayfa' },
-  { to: '/profile', icon: User, label: 'Profil' },
+  { to: '/friends', icon: Users, label: 'Arkadaşlar' },
   { to: '/stats', icon: BarChart2, label: 'İstatistikler' },
+  { to: '/profile', icon: User, label: 'Profil' },
   { to: '/settings', icon: Settings, label: 'Ayarlar' },
 ] as const
 
@@ -15,22 +17,32 @@ export function BottomNavBar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [pendingCount, setPendingCount] = useState(0)
 
-  useEffect(() => {
+  const refreshPendingCount = () => {
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
         const count = await countPendingRequests(data.user.id)
         setPendingCount(count)
       }
     })
+  }
+
+  useEffect(() => {
+    refreshPendingCount()
   }, [pathname])
+
+  useEffect(() => {
+    window.addEventListener(PLAYERS_REFRESH_EVENT, refreshPendingCount)
+    return () => window.removeEventListener(PLAYERS_REFRESH_EVENT, refreshPendingCount)
+  }, [])
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-[#16213e] border-t border-[#2d3748] safe-bottom z-40">
       <div className="max-w-lg mx-auto flex items-center justify-around py-2">
         {NAV_ITEMS.map((item) => {
-          const active = pathname === item.to
+          const active =
+            pathname === item.to || (item.to === '/friends' && pathname.startsWith('/friend/'))
           const Icon = item.icon
-          const badge = item.to === '/profile' && pendingCount > 0
+          const badge = item.to === '/friends' && pendingCount > 0
 
           return (
             <Link

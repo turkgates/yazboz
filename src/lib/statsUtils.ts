@@ -1,7 +1,7 @@
 import type { CezaliGameSettings, Game, Round } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import { detectOkeyBurnType, getGameWinners, getLeader, getPlayerRank } from '@/lib/calculations'
-import { is101Game, isCezaliSettings, isEsliGame, getTeams, teamLabel, getGameRanking, getWinnersCount } from '@/lib/gameTypes'
+import { is101Game, isBankoluGame, isCezaliGame, isCezaliSettings, isEsliGame, getTeams, teamLabel, getGameRanking, getWinnersCount } from '@/lib/gameTypes'
 import { OKEY_YUZBIR_FINISH_SCORES } from '@/lib/101calculations'
 
 export function getScoreForPlayer(scores: Record<string, number>, playerName: string): number {
@@ -29,6 +29,51 @@ export function computeGameTotals(game: Game, rounds: Round[]): Record<string, n
     totals[player] = rounds.reduce((sum, r) => sum + getScoreForPlayer(r.scores, player), 0)
   }
   return totals
+}
+
+// Eşli oyunlarda skorlar ve sıralama takım adıyla tutulur
+export function getPlayerEntity(game: Game, playerName: string): string | null {
+  const lower = playerName.toLowerCase()
+  if (isEsliGame(game)) {
+    const team = getTeams(game).find((t) => t.some((p) => p.toLowerCase() === lower))
+    if (team) return teamLabel(team)
+  }
+  return game.players.find((p) => p.toLowerCase() === lower) ?? null
+}
+
+export function getPlayerRoundScore(game: Game, round: Round, playerName: string): number {
+  return getScoreForPlayer(round.scores, getPlayerEntity(game, playerName) ?? playerName)
+}
+
+export function isRoundWinner(game: Game, round: Round, playerName: string): boolean {
+  const score = getPlayerRoundScore(game, round, playerName)
+  if (score >= 0) return false
+  return game.players.every((p) => getPlayerRoundScore(game, round, p) >= score)
+}
+
+export interface PlayerGameResult {
+  entity: string
+  rank: number
+  won: boolean
+}
+
+export function getPlayerGameResult(
+  game: Game,
+  rounds: Round[],
+  playerName: string
+): PlayerGameResult | null {
+  if (rounds.length === 0) return null
+  const entity = getPlayerEntity(game, playerName)
+  if (!entity) return null
+
+  const ranking = getGameRanking(game, rounds)
+  const row = ranking.find((r) => r.name.toLowerCase() === entity.toLowerCase())
+  if (!row) return null
+
+  // Eşit puanlılar aynı sırayı paylaşır
+  const rank = 1 + ranking.filter((r) => r.total < row.total).length
+  const winnersCount = isEsliGame(game) ? 1 : getWinnersCount(game.settings)
+  return { entity, rank, won: rank <= winnersCount }
 }
 
 export function getRoundWinner(game: Game, round: Round): string | null {
@@ -95,30 +140,27 @@ export function computePlayerProfileStats(
 
   for (const game of games) {
     const gameRounds = roundsByGame[game.id] ?? []
-    const playerTotals = computeGameTotals(game, gameRounds)
-    const gameTotal = playerTotals[playerName] ?? getPlayerGameTotal(gameRounds, playerName)
+    const gameTotal = gameRounds.reduce((sum, r) => sum + getPlayerRoundScore(game, r, playerName), 0)
     totalScore += gameTotal
 
     if (bestGame === null || gameTotal < bestGame) bestGame = gameTotal
     if (worstGame === null || gameTotal > worstGame) worstGame = gameTotal
 
-    const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
-    const rank = getPlayerRank(playerName, playerTotals)
+    const result = getPlayerGameResult(game, gameRounds, playerName)
 
-    if (winners.some((w) => w.toLowerCase() === playerName.toLowerCase())) wins++
-    if (rank === 1) firstPlaceCount++
-    if (rank === 2) secondPlaceCount++
-    if (rank === 3) thirdPlaceCount++
+    if (result?.won) wins++
+    if (result?.rank === 1) firstPlaceCount++
+    if (result?.rank === 2) secondPlaceCount++
+    if (result?.rank === 3) thirdPlaceCount++
 
     for (const round of gameRounds) {
-      const score = getScoreForPlayer(round.scores, playerName)
+      const score = getPlayerRoundScore(game, round, playerName)
       totalRounds++
 
       if (bestRound === null || score < bestRound) bestRound = score
       if (worstRound === null || score > worstRound) worstRound = score
 
-      const winner = getRoundWinner(game, round)
-      if (winner && winner.toLowerCase() === playerName.toLowerCase() && round.okey_thrown) {
+      if (round.okey_thrown && isRoundWinner(game, round, playerName)) {
         okeyCount++
       }
 
@@ -145,6 +187,125 @@ export function computePlayerProfileStats(
     bestGame,
     worstGame,
   }
+}
+
+export function filterGamesWithPlayer(games: Game[], playerName: string): Game[] {
+  const lower = playerName.toLowerCase()
+  return games.filter((g) => g.players.some((p) => p.toLowerCase() === lower))
+}
+
+export interface ComparisonStats {
+  games: number
+  wins: number
+  winRate: number
+  avgRank: number | null
+  roundWinRate: number
+  okeyThrows: number
+  okeyBurns: number
+}
+
+export function computeComparisonStats(
+  playerName: string,
+  games: Game[],
+  roundsByGame: Record<string, Round[]>
+): ComparisonStats {
+  let played = 0
+  let wins = 0
+  let rankTotal = 0
+  let soloGames = 0
+  let rounds = 0
+  let roundWins = 0
+  let okeyThrows = 0
+  let okeyBurns = 0
+
+  for (const game of games) {
+    const gameRounds = roundsByGame[game.id] ?? []
+    const result = getPlayerGameResult(game, gameRounds, playerName)
+    if (!result) continue
+
+    played++
+    if (result.won) wins++
+
+    // Eşlide iki, teklide dört sıra var: ortalamayı karıştırmamak için yalnızca tekli
+    if (!isEsliGame(game)) {
+      rankTotal += result.rank
+      soloGames++
+    }
+
+    const hasOkey = isCezaliGame(game) || isBankoluGame(game)
+    for (const round of gameRounds) {
+      if (round.is_indicator_only) continue
+      rounds++
+      if (isRoundWinner(game, round, playerName)) {
+        roundWins++
+        if (hasOkey && round.okey_thrown) okeyThrows++
+      }
+      // Bankoluda yakma cezası puandan ayırt edilemiyor
+      if (isCezaliGame(game) && isOkeyBurn(game, round, playerName)) okeyBurns++
+    }
+  }
+
+  return {
+    games: played,
+    wins,
+    winRate: played > 0 ? Math.round((wins / played) * 100) : 0,
+    avgRank: soloGames > 0 ? Math.round((rankTotal / soloGames) * 10) / 10 : null,
+    roundWinRate: rounds > 0 ? Math.round((roundWins / rounds) * 100) : 0,
+    okeyThrows,
+    okeyBurns,
+  }
+}
+
+export type HeadToHeadOutcome = 'me' | 'friend' | 'tie' | 'same_team'
+
+export interface HeadToHeadGame {
+  game: Game
+  myRank: number
+  friendRank: number
+  outcome: HeadToHeadOutcome
+}
+
+export interface HeadToHead {
+  myWins: number
+  friendWins: number
+  ties: number
+  sameTeam: number
+  games: HeadToHeadGame[]
+}
+
+export function computeHeadToHead(
+  myName: string,
+  friendName: string,
+  games: Game[],
+  roundsByGame: Record<string, Round[]>
+): HeadToHead {
+  const summary: HeadToHead = { myWins: 0, friendWins: 0, ties: 0, sameTeam: 0, games: [] }
+
+  for (const game of games) {
+    const gameRounds = roundsByGame[game.id] ?? []
+    const mine = getPlayerGameResult(game, gameRounds, myName)
+    const theirs = getPlayerGameResult(game, gameRounds, friendName)
+    if (!mine || !theirs) continue
+
+    let outcome: HeadToHeadOutcome
+    if (mine.entity === theirs.entity) {
+      outcome = 'same_team'
+      summary.sameTeam++
+    } else if (mine.rank === theirs.rank) {
+      outcome = 'tie'
+      summary.ties++
+    } else if (mine.rank < theirs.rank) {
+      outcome = 'me'
+      summary.myWins++
+    } else {
+      outcome = 'friend'
+      summary.friendWins++
+    }
+
+    summary.games.push({ game, myRank: mine.rank, friendRank: theirs.rank, outcome })
+  }
+
+  return summary
 }
 
 export interface PlayerAggregateStats {

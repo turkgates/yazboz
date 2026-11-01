@@ -4,20 +4,19 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import {
   fetchGroupById,
+  fetchFriends,
   fetchGroupMembers,
   fetchGroupGamesCount,
   fetchGroupGamesWithRounds,
   leaveGroup,
   removeGroupMember,
 } from '@/lib/socialSupabase'
-import type { Game, Group, GroupMember, Round } from '@/types'
+import type { Friend, Game, Group, GroupMember, Round } from '@/types'
 import { BackButton } from '@/components/layout/BackButton'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { QRCodeSVG } from 'qrcode.react'
 import { Check, Copy, QrCode, LogOut, Trash2 } from 'lucide-react'
-import { getGameWinners } from '@/lib/calculations'
-import { getWinnersCount } from '@/lib/gameTypes'
-import { computeGameTotals } from '@/lib/statsUtils'
+import { getPlayerGameResult } from '@/lib/statsUtils'
 
 export const Route = createFileRoute('/group/$groupId')({
   beforeLoad: async () => {
@@ -54,10 +53,7 @@ function computeMemberStats(
       if (!game.players.some((p) => p.toLowerCase() === memberName.toLowerCase())) continue
 
       totalGames++
-      const gameRounds = roundsByGame[game.id] ?? []
-      const playerTotals = computeGameTotals(game, gameRounds)
-      const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
-      if (winners.some((w) => w.toLowerCase() === memberName.toLowerCase())) wins++
+      if (getPlayerGameResult(game, roundsByGame[game.id] ?? [], memberName)?.won) wins++
     }
 
     stats[member.user_id] = {
@@ -78,7 +74,7 @@ function GroupDetailPage() {
   const [group, setGroup] = useState<Group | null>(null)
   const [members, setMembers] = useState<GroupMember[]>([])
   const [memberStats, setMemberStats] = useState<Record<string, MemberWinStats>>({})
-  const [myPlayers, setMyPlayers] = useState<{ id: string; linked_user_id: string | null }[]>([])
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set())
   const [gamesCount, setGamesCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showQR, setShowQR] = useState(false)
@@ -89,14 +85,12 @@ function GroupDetailPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) setUserId(user.id)
 
-    const [groupRes, membersRes, count, groupGamesRes, playersRes] = await Promise.all([
+    const [groupRes, membersRes, count, groupGamesRes, friendsRes] = await Promise.all([
       fetchGroupById(groupId),
       fetchGroupMembers(groupId),
       fetchGroupGamesCount(groupId),
       fetchGroupGamesWithRounds(groupId),
-      user
-        ? supabase.from('players').select('id, linked_user_id').eq('user_id', user.id)
-        : Promise.resolve({ data: [] }),
+      user ? fetchFriends(user.id) : Promise.resolve({ data: [] as Friend[] }),
     ])
 
     if (membersRes.error) console.error('Üye hatası:', membersRes.error)
@@ -107,7 +101,7 @@ function GroupDetailPage() {
     setGroup(groupRes.data)
     setMembers(membersList)
     setMemberStats(stats)
-    setMyPlayers(playersRes.data ?? [])
+    setFriendIds(new Set((friendsRes.data ?? []).map((f) => f.friend_id)))
     setGamesCount(count)
     setLoading(false)
   }
@@ -133,7 +127,12 @@ function GroupDetailPage() {
   }
 
   const handleLeave = async () => {
-    await leaveGroup(groupId, userId)
+    const { error } = await leaveGroup(groupId, userId)
+    if (error) {
+      console.error('Gruptan ayrılma hatası:', error)
+      alert('Gruptan ayrılınamadı: ' + error.message)
+      return
+    }
     navigate({ to: '/groups' })
   }
 
@@ -263,7 +262,6 @@ function GroupDetailPage() {
               <p className="text-[#718096] text-sm text-center py-6">Henüz üye yok</p>
             ) : (
               sortedMembers.map((member, index) => {
-                const playerRecord = myPlayers.find((p) => p.linked_user_id === member.user_id)
                 const stats = memberStats[member.user_id]
 
                 return (
@@ -295,11 +293,12 @@ function GroupDetailPage() {
                         {stats?.wins ?? 0} kazanma · %{stats?.winRate ?? 0}
                       </p>
                     </div>
-                    {playerRecord && (
+                    {friendIds.has(member.user_id) && (
                       <button
                         type="button"
+                        aria-label={`${member.profiles?.display_name ?? 'Arkadaş'} ile karşılaştır`}
                         onClick={() =>
-                          navigate({ to: '/player/$playerId', params: { playerId: playerRecord.id } })
+                          navigate({ to: '/friend/$friendId', params: { friendId: member.user_id } })
                         }
                         className="text-[#718096] hover:text-white p-2"
                       >
