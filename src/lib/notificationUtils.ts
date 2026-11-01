@@ -19,19 +19,10 @@ export async function fetchNotifications(userId: string): Promise<AppNotificatio
   return (data ?? []) as AppNotification[]
 }
 
-export async function createNotification(params: {
-  userId: string
-  type: NotificationType
-  title: string
-  body: string
-  data?: Record<string, unknown>
-}) {
-  const { error } = await supabase.from('notifications').insert({
-    user_id: params.userId,
-    type: params.type,
-    title: params.title,
-    body: params.body,
-    data: params.data ?? {},
+export async function sendNotification(receiverId: string, type: NotificationType) {
+  const { error } = await supabase.rpc('send_notification', {
+    p_receiver_id: receiverId,
+    p_type: type,
   })
 
   if (error) console.error('Bildirim oluşturma hatası:', error)

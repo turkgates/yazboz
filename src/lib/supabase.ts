@@ -8,6 +8,10 @@ if (!supabaseUrl || !supabaseKey) {
   throw new Error('VITE_SUPABASE_URL ve VITE_SUPABASE_ANON_KEY .env.local dosyasında tanımlı olmalı')
 }
 
+// Supabase istemcisi URL'deki oturum bilgisini işleyip hash'i temizler;
+// şifre kurtarma bağlantısını tanıyabilmek için önce saklanır.
+export const initialAuthHash = window.location.hash
+
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function getCurrentUser() {
@@ -31,6 +35,10 @@ export async function resetPassword(email: string) {
   return supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${window.location.origin}/reset-password`,
   })
+}
+
+export async function updatePassword(password: string) {
+  return supabase.auth.updateUser({ password })
 }
 
 export async function fetchActiveGames(userId: string) {

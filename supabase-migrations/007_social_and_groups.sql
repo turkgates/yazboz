@@ -31,11 +31,6 @@ create table if not exists groups (
 
 alter table groups enable row level security;
 
-create policy "Grup üyeleri grubu görür"
-  on groups for select using (
-    id in (select group_id from group_members where user_id = auth.uid())
-  );
-
 create policy "Grup sahibi grubu görür"
   on groups for select using (owner_id = auth.uid());
 

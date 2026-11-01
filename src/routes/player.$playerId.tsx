@@ -57,7 +57,6 @@ function PlayerProfilePage() {
     let displayAvatar = playerData.avatar_url
     let username: string | null = null
     let playerName = playerData.name
-    let games: Game[] = []
     let rounds: Round[] = []
 
     const linked = !!playerData.linked_user_id && playerData.linked_user_id !== user.id
@@ -77,27 +76,31 @@ function PlayerProfilePage() {
       }
     }
 
-    // Birleştirilmiş veya yerel oyuncu: kendi oyunlarımızdan istatistik çek
-    const { data: myGames } = await supabase
+    // Arkadaşın profili hem benim hem onun kaydettiği oyunları gösterir
+    const ownerIds = linked ? [user.id, playerData.linked_user_id as string] : [user.id]
+
+    const { data: ownerGames, error: gamesError } = await supabase
       .from('games')
       .select('*')
-      .eq('user_id', user.id)
+      .in('user_id', ownerIds)
       .eq('status', 'finished')
       .order('created_at', { ascending: false })
 
-    games = ((myGames ?? []) as Game[]).filter((g) =>
+    if (gamesError) console.error('Oyuncu oyunları yükleme hatası:', gamesError)
+
+    const games = ((ownerGames ?? []) as Game[]).filter((g) =>
       (g.players as string[]).some(
         (p) => p.toLowerCase() === playerName.toLowerCase()
       )
     )
 
     if (games.length) {
-      const { data: myRounds } = await supabase
+      const { data: gameRounds } = await supabase
         .from('rounds')
         .select('*')
         .in('game_id', games.map((g) => g.id))
 
-      rounds = (myRounds ?? []) as Round[]
+      rounds = (gameRounds ?? []) as Round[]
     }
 
     setPlayer({ ...playerData, name: displayName, avatar_url: displayAvatar })

@@ -22,11 +22,13 @@ function RootLayout() {
     friendAvatarUrl: string | null
   } | null>(null)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isResetPassword = pathname === '/reset-password'
   const hideBottomNav =
     pathname.startsWith('/game/') ||
     pathname === '/auth' ||
     pathname === '/' ||
-    pathname === '/onboarding'
+    pathname === '/onboarding' ||
+    isResetPassword
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -90,7 +92,7 @@ function RootLayout() {
     <>
       <Outlet />
       {!hideBottomNav && <BottomNavBar />}
-      {mergeUserId && (
+      {mergeUserId && !isResetPassword && (
         <PendingMergeModal
           userId={mergeUserId}
           onDone={() => {
