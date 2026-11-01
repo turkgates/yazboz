@@ -27,7 +27,7 @@ function JoinGroupPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { navigate({ to: '/auth' }); return }
-      const group = await joinGroupByCode(code.trim(), user.id)
+      const group = await joinGroupByCode(code.trim())
       navigate({ to: '/groups', replace: true })
       console.log('Gruba katılındı:', group.name)
     } catch (err: unknown) {
