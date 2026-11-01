@@ -2,17 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import type { Game, Round } from '@/types'
 import { fetchPlayerGamesWithRounds } from '@/lib/supabase'
-import { getGameWinners } from '@/lib/calculations'
 import {
   computePlayerProfileStats,
   computePlayer101Stats,
-  computeGameTotals,
-  getPlayerGameTotal,
-  getScoreForPlayer,
+  getPlayerGameResult,
+  getPlayerRoundScore,
   getRankEmoji,
 } from '@/lib/statsUtils'
 import {
-  getWinnersCount,
   is101Game,
   isBankoluGame,
   isCezaliGame,
@@ -73,11 +70,11 @@ function computeRoundWinStats(
     for (const round of gameRounds) {
       if (round.is_indicator_only) continue
       totalRounds++
-      const score = getScoreForPlayer(round.scores, playerName)
+      const score = getPlayerRoundScore(game, round, playerName)
       roundScoreTotal += score
 
       const scores = game.players
-        .map((p) => getScoreForPlayer(round.scores, p))
+        .map((p) => getPlayerRoundScore(game, round, p))
         .filter((s) => s !== 0 || Object.keys(round.scores).length > 0)
       if (scores.length === 0) continue
       const minScore = Math.min(...scores)
@@ -122,7 +119,7 @@ function computeSpecialStats(
 
     for (const round of gameRounds) {
       if (showCezali && (isCezaliGame(game) || isBankoluGame(game))) {
-        if (round.fake_okey && getScoreForPlayer(round.scores, playerName) > 0) {
+        if (round.fake_okey && getPlayerRoundScore(game, round, playerName) > 0) {
           fakeOkeyCount++
         }
         if (isBankoluGame(game) && (round.banko_players ?? []).includes(playerName)) {
@@ -139,7 +136,7 @@ function computeSpecialStats(
       }
 
       if (show101 && is101Game(game)) {
-        const score = getScoreForPlayer(round.scores, playerName)
+        const score = getPlayerRoundScore(game, round, playerName)
         if (score === OKEY_YUZBIR_FINISH_SCORES.normal) acmadanFinishCount++
       }
     }
@@ -265,10 +262,7 @@ export function PlayerStats({
   const fourthPlaceCount = useMemo(() => {
     let count = 0
     for (const game of filteredGames) {
-      const totals = computeGameTotals(game, filteredRoundsByGame[game.id] ?? [])
-      const sorted = Object.entries(totals).sort(([, a], [, b]) => a - b)
-      const idx = sorted.findIndex(([name]) => name.toLowerCase() === playerName.toLowerCase())
-      if (idx === 3) count++
+      if (getPlayerGameResult(game, filteredRoundsByGame[game.id] ?? [], playerName)?.rank === 4) count++
     }
     return count
   }, [filteredGames, filteredRoundsByGame, playerName])
@@ -276,18 +270,15 @@ export function PlayerStats({
   const history = useMemo(() => {
     return filteredGames.slice(0, 10).map((game) => {
       const rounds = filteredRoundsByGame[game.id] ?? []
-      const playerTotals = computeGameTotals(game, rounds)
-      const winners = getGameWinners(playerTotals, getWinnersCount(game.settings))
-      const sorted = Object.entries(playerTotals).sort(([, a], [, b]) => a - b)
-      const rank = sorted.findIndex(([name]) => name.toLowerCase() === playerName.toLowerCase()) + 1
+      const result = getPlayerGameResult(game, rounds, playerName)
       const total = isSayiliGame(game)
         ? getSayiliEntityScore(game, rounds, playerName)
-        : getPlayerGameTotal(rounds, playerName)
+        : rounds.reduce((sum, r) => sum + getPlayerRoundScore(game, r, playerName), 0)
       return {
         game,
         total,
-        rank: rank || 1,
-        isWinner: winners.some((w) => w.toLowerCase() === playerName.toLowerCase()),
+        rank: result?.rank ?? 1,
+        isWinner: result?.won ?? false,
       }
     })
   }, [filteredGames, filteredRoundsByGame, playerName])

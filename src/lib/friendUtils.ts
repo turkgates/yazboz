@@ -142,7 +142,6 @@ export async function onFriendshipEstablished(
   const friendAvatarUrl = friendProfile?.avatar_url ?? null
 
   await sendNotification(friendId, 'friend_accepted')
-  await sendNotification(friendId, 'merge_notify')
 
   await updateCrossAvatars(currentUserId, friendId, friendAvatarUrl)
   return checkAndPromptMerge(currentUserId, friendId, friendName, friendAvatarUrl)
@@ -204,8 +203,6 @@ export async function checkAndPromptMerge(
   if (options?.openModal !== false) {
     dispatchMergeModal(friendUserId)
   }
-
-  await sendNotification(friendUserId, 'merge_request')
 
   return { userId: friendUserId, name: friendName, avatarUrl }
 }

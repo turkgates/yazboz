@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
@@ -37,6 +37,7 @@ export function MergeRequestModal({
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | 'none' | null>(null)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
+  const autoSkipStarted = useRef(false)
 
   useEffect(() => {
     loadLocalPlayers()
@@ -63,6 +64,20 @@ export function MergeRequestModal({
       avatar_url: p.avatar_url,
       isSuggested: p.name.trim().toLowerCase() === friendName.trim().toLowerCase(),
     }))
+
+    // Birleştirilecek yerel oyuncu yoksa sorulacak bir şey de yok
+    if (players.length === 0) {
+      if (autoSkipStarted.current) return
+      autoSkipStarted.current = true
+      try {
+        await skipMerge(friendUserId)
+        await finishModal()
+        onSkip()
+        return
+      } catch (err) {
+        console.error('Arkadaş oyuncu listesine eklenemedi:', err)
+      }
+    }
 
     const suggested = players.find((p) => p.isSuggested)
     setLocalPlayers(players)

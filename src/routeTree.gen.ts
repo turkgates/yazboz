@@ -20,6 +20,7 @@ import { Route as NewGameRouteImport } from './routes/new-game'
 import { Route as JoinGroupRouteImport } from './routes/join-group'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as GroupsRouteImport } from './routes/groups'
+import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as DiceRouteImport } from './routes/dice'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
@@ -27,6 +28,7 @@ import { Route as PlayerPlayerIdRouteImport } from './routes/player.$playerId'
 import { Route as GroupGroupIdRouteImport } from './routes/group.$groupId'
 import { Route as GameGameIdRouteImport } from './routes/game.$gameId'
 import { Route as GameOverGameIdRouteImport } from './routes/game-over.$gameId'
+import { Route as FriendFriendIdRouteImport } from './routes/friend.$friendId'
 
 const TrackerRoute = TrackerRouteImport.update({
   id: '/tracker',
@@ -83,6 +85,11 @@ const GroupsRoute = GroupsRouteImport.update({
   path: '/groups',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FriendsRoute = FriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DiceRoute = DiceRouteImport.update({
   id: '/dice',
   path: '/dice',
@@ -118,11 +125,17 @@ const GameOverGameIdRoute = GameOverGameIdRouteImport.update({
   path: '/game-over/$gameId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FriendFriendIdRoute = FriendFriendIdRouteImport.update({
+  id: '/friend/$friendId',
+  path: '/friend/$friendId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dice': typeof DiceRoute
+  '/friends': typeof FriendsRoute
   '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
   '/join-group': typeof JoinGroupRoute
@@ -134,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
+  '/friend/$friendId': typeof FriendFriendIdRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
@@ -143,6 +157,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dice': typeof DiceRoute
+  '/friends': typeof FriendsRoute
   '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
   '/join-group': typeof JoinGroupRoute
@@ -154,6 +169,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
+  '/friend/$friendId': typeof FriendFriendIdRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
@@ -164,6 +180,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dice': typeof DiceRoute
+  '/friends': typeof FriendsRoute
   '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
   '/join-group': typeof JoinGroupRoute
@@ -175,6 +192,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tracker': typeof TrackerRoute
+  '/friend/$friendId': typeof FriendFriendIdRoute
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
@@ -186,6 +204,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dice'
+    | '/friends'
     | '/groups'
     | '/home'
     | '/join-group'
@@ -197,6 +216,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stats'
     | '/tracker'
+    | '/friend/$friendId'
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
@@ -206,6 +226,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dice'
+    | '/friends'
     | '/groups'
     | '/home'
     | '/join-group'
@@ -217,6 +238,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stats'
     | '/tracker'
+    | '/friend/$friendId'
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
@@ -226,6 +248,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dice'
+    | '/friends'
     | '/groups'
     | '/home'
     | '/join-group'
@@ -237,6 +260,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/stats'
     | '/tracker'
+    | '/friend/$friendId'
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
@@ -247,6 +271,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
   DiceRoute: typeof DiceRoute
+  FriendsRoute: typeof FriendsRoute
   GroupsRoute: typeof GroupsRoute
   HomeRoute: typeof HomeRoute
   JoinGroupRoute: typeof JoinGroupRoute
@@ -258,6 +283,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
   TrackerRoute: typeof TrackerRoute
+  FriendFriendIdRoute: typeof FriendFriendIdRoute
   GameOverGameIdRoute: typeof GameOverGameIdRoute
   GameGameIdRoute: typeof GameGameIdRoute
   GroupGroupIdRoute: typeof GroupGroupIdRoute
@@ -343,6 +369,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GroupsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/friends': {
+      id: '/friends'
+      path: '/friends'
+      fullPath: '/friends'
+      preLoaderRoute: typeof FriendsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dice': {
       id: '/dice'
       path: '/dice'
@@ -392,6 +425,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GameOverGameIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/friend/$friendId': {
+      id: '/friend/$friendId'
+      path: '/friend/$friendId'
+      fullPath: '/friend/$friendId'
+      preLoaderRoute: typeof FriendFriendIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -399,6 +439,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
   DiceRoute: DiceRoute,
+  FriendsRoute: FriendsRoute,
   GroupsRoute: GroupsRoute,
   HomeRoute: HomeRoute,
   JoinGroupRoute: JoinGroupRoute,
@@ -410,6 +451,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
   TrackerRoute: TrackerRoute,
+  FriendFriendIdRoute: FriendFriendIdRoute,
   GameOverGameIdRoute: GameOverGameIdRoute,
   GameGameIdRoute: GameGameIdRoute,
   GroupGroupIdRoute: GroupGroupIdRoute,

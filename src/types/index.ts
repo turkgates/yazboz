@@ -158,6 +158,11 @@ export type NotificationType =
   | 'merge_request'
   | 'merge_done'
   | 'merge_notify'
+  | 'friend_removed'
+  | 'group_joined'
+  | 'group_left'
+  | 'group_removed'
+  | 'group_deleted'
 
 export interface AppNotification {
   id: string

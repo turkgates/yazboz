@@ -25,6 +25,16 @@ function getNotificationIcon(type: AppNotification['type']): string {
       return '✅'
     case 'merge_notify':
       return 'ℹ️'
+    case 'friend_removed':
+      return '💔'
+    case 'group_joined':
+      return '👋'
+    case 'group_left':
+      return '🚪'
+    case 'group_removed':
+      return '🚫'
+    case 'group_deleted':
+      return '🗑️'
     default:
       return '🔔'
   }
@@ -111,8 +121,9 @@ export function NotificationBell() {
 
     switch (notification.type) {
       case 'friend_request':
+      case 'friend_removed':
         setShowPanel(false)
-        navigate({ to: '/players' })
+        navigate({ to: '/friends' })
         break
       case 'merge_request': {
         const friendUserId =
@@ -126,16 +137,32 @@ export function NotificationBell() {
         setShowPanel(false)
         navigate({ to: '/profile', search: { tab: 'stats' } })
         break
-      case 'friend_accepted':
+      case 'friend_accepted': {
+        const friendId = notification.data?.friend_id as string | undefined
         setShowPanel(false)
-        navigate({ to: '/profile', search: { tab: 'friends' } })
+        if (friendId) navigate({ to: '/friend/$friendId', params: { friendId } })
+        else navigate({ to: '/friends' })
+        break
+      }
+      case 'group_joined':
+      case 'group_left': {
+        const groupId = notification.data?.group_id as string | undefined
+        setShowPanel(false)
+        if (groupId) navigate({ to: '/group/$groupId', params: { groupId } })
+        else navigate({ to: '/groups' })
+        break
+      }
+      case 'group_removed':
+      case 'group_deleted':
+        setShowPanel(false)
+        navigate({ to: '/groups' })
         break
       default:
         break
     }
   }
 
-  const goToPlayers = async (notification: AppNotification) => {
+  const goToFriends = async (notification: AppNotification) => {
     if (!notification.is_read) {
       await markNotificationRead(notification.id)
       setNotifications((prev) =>
@@ -143,7 +170,7 @@ export function NotificationBell() {
       )
     }
     setShowPanel(false)
-    navigate({ to: '/players' })
+    navigate({ to: '/friends' })
   }
 
   return (
@@ -163,7 +190,7 @@ export function NotificationBell() {
       </button>
 
       {showPanel && (
-        <div className="absolute right-0 top-full mt-2 w-80 max-h-[70vh] overflow-hidden bg-[#16213e] border border-[#2d3748] rounded-2xl shadow-xl z-50 flex flex-col">
+        <div className="fixed left-4 right-4 top-[calc(env(safe-area-inset-top)+3.75rem)] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 max-h-[70vh] overflow-hidden bg-[#16213e] border border-[#2d3748] rounded-2xl shadow-xl z-50 flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#2d3748]">
             <h3 className="text-white font-bold text-sm">Bildirimler</h3>
             <div className="flex items-center gap-2">
@@ -219,7 +246,7 @@ export function NotificationBell() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => goToPlayers(notification)}
+                          onClick={() => goToFriends(notification)}
                           className="mt-2 ml-9 flex items-center gap-1 text-[#e94560] text-xs font-semibold"
                         >
                           → Arkadaşlar

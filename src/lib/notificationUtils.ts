@@ -40,6 +40,15 @@ export async function markAllNotificationsRead(userId: string) {
     .eq('is_read', false)
 }
 
+export async function markFriendRequestNotificationsRead(userId: string, senderId: string) {
+  await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('user_id', userId)
+    .eq('type', 'friend_request')
+    .eq('data->>sender_id', senderId)
+}
+
 export function dispatchMergeModal(friendUserId: string) {
   window.dispatchEvent(
     new CustomEvent(MERGE_OPEN_EVENT, { detail: { friendUserId } })

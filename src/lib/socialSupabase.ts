@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import type { Friend, FriendRequest, Group, GroupMember, Profile, SavedPlayer } from '@/types'
+import { groupRoundsByGame } from '@/lib/statsUtils'
+import type { Friend, FriendRequest, Game, Group, GroupMember, Profile, Round, SavedPlayer } from '@/types'
 
 export function getSupabaseErrorMessage(err: unknown, fallback = 'Bir hata oluştu'): string {
   if (err instanceof Error) return err.message
@@ -115,8 +116,6 @@ export async function fetchMyGroups(userId: string) {
     .eq('user_id', userId)
     .order('joined_at', { ascending: false })
 
-  console.log('Grup üyelikleri:', memberships, 'Hata:', memberError)
-
   if (memberError) {
     console.error('fetchMyGroups memberships error:', memberError)
     return { data: [] as Group[], error: memberError }
@@ -132,8 +131,6 @@ export async function fetchMyGroups(userId: string) {
     .select('id, name, invite_code, owner_id, created_at')
     .in('id', groupIds)
 
-  console.log('Gruplar:', groups, 'Hata:', groupsError)
-
   if (groupsError) {
     console.error('fetchMyGroups groups error:', groupsError)
     return { data: [] as Group[], error: groupsError }
@@ -145,9 +142,44 @@ export async function fetchMyGroups(userId: string) {
     myRole: roleMap[g.id] as 'admin' | 'member',
   }))
 
-  console.log('İşlenmiş gruplar:', result)
-
   return { data: result, error: null }
+}
+
+export interface GroupSummary extends Group {
+  members: { user_id: string; name: string; avatar_url: string | null }[]
+  gamesCount: number
+}
+
+export async function fetchMyGroupSummaries(userId: string): Promise<GroupSummary[]> {
+  const { data: groups } = await fetchMyGroups(userId)
+  if (!groups.length) return []
+
+  const groupIds = groups.map((g) => g.id)
+  const [membersRes, gamesRes] = await Promise.all([
+    supabase.from('group_members').select('group_id, user_id').in('group_id', groupIds),
+    supabase.from('group_games').select('group_id').in('group_id', groupIds),
+  ])
+  if (membersRes.error) console.error('Grup üyeleri yüklenemedi:', membersRes.error)
+  if (gamesRes.error) console.error('Grup oyunları yüklenemedi:', gamesRes.error)
+
+  const members = membersRes.data ?? []
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, display_name, avatar_url')
+    .in('id', [...new Set(members.map((m) => m.user_id))])
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+
+  return groups.map((group) => ({
+    ...group,
+    members: members
+      .filter((m) => m.group_id === group.id)
+      .map((m) => ({
+        user_id: m.user_id,
+        name: profileMap[m.user_id]?.display_name ?? 'İsimsiz',
+        avatar_url: profileMap[m.user_id]?.avatar_url ?? null,
+      })),
+    gamesCount: (gamesRes.data ?? []).filter((g) => g.group_id === group.id).length,
+  }))
 }
 
 export async function fetchGroupById(groupId: string) {
@@ -159,8 +191,6 @@ export async function fetchGroupMembers(groupId: string) {
     .from('group_members')
     .select('id, role, joined_at, user_id')
     .eq('group_id', groupId)
-
-  console.log('Üyeler (group_members):', members, 'Hata:', error)
 
   if (error) {
     console.error('Üye hatası:', error)
@@ -189,8 +219,6 @@ export async function fetchGroupMembers(groupId: string) {
     joined_at: m.joined_at,
     profiles: profileMap[m.user_id] ?? undefined,
   }))
-
-  console.log('Üyeler (işlenmiş):', result)
 
   return { data: result, error: null }
 }
@@ -659,6 +687,53 @@ export async function fetchGroupGamesWithRounds(groupId: string) {
   }
 
   return { games: (games ?? []) as import('@/types').Game[], roundsByGame }
+}
+
+const FETCH_PAGE_SIZE = 1000
+const ROUNDS_GAME_CHUNK = 100
+
+// Supabase tek sorguda en fazla 1000 satır döndürür ve fazlasını sessizce keser
+async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + FETCH_PAGE_SIZE - 1)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if ((data ?? []).length < FETCH_PAGE_SIZE) return rows
+  }
+}
+
+// Sahip filtresi yok: RLS kendi, arkadaş ve ortak grup oyunlarını döndürür
+export async function fetchVisibleFinishedGames() {
+  const games = await fetchAllPages<Game>((from, to) =>
+    supabase
+      .from('games')
+      .select('*')
+      .eq('status', 'finished')
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(from, to)
+  )
+
+  const rounds: Round[] = []
+  for (let i = 0; i < games.length; i += ROUNDS_GAME_CHUNK) {
+    const gameIds = games.slice(i, i + ROUNDS_GAME_CHUNK).map((g) => g.id)
+    rounds.push(
+      ...(await fetchAllPages<Round>((from, to) =>
+        supabase
+          .from('rounds')
+          .select('*')
+          .in('game_id', gameIds)
+          .order('game_id')
+          .order('round_number')
+          .range(from, to)
+      ))
+    )
+  }
+
+  return { games, roundsByGame: groupRoundsByGame(rounds) }
 }
 
 export async function removeGroupMember(memberId: string) {

@@ -8,6 +8,9 @@ import { BackButton } from '@/components/layout/BackButton'
 import { Plus, QrCode, Users } from 'lucide-react'
 
 export const Route = createFileRoute('/groups')({
+  validateSearch: (search: Record<string, unknown>): { create?: boolean } => ({
+    create: search.create === true ? true : undefined,
+  }),
   beforeLoad: async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) throw redirect({ to: '/auth' })
@@ -17,10 +20,11 @@ export const Route = createFileRoute('/groups')({
 
 function GroupsPage() {
   const navigate = useNavigate()
+  const { create } = Route.useSearch()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const [groups, setGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
+  const [showCreate, setShowCreate] = useState(!!create)
   const [newGroupName, setNewGroupName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')

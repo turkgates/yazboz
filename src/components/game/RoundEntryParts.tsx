@@ -20,7 +20,7 @@ export function EntrySheet({
 }: {
   title: string
   onClose: () => void
-  footer: ReactNode
+  footer?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -52,7 +52,7 @@ export function EntrySheet({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-3.5">{children}</div>
-        <div className="px-5 pt-3 pb-4 shrink-0 border-t border-[#2d3748]">{footer}</div>
+        {footer && <div className="px-5 pt-3 pb-4 shrink-0 border-t border-[#2d3748]">{footer}</div>}
       </motion.div>
     </motion.div>
   )

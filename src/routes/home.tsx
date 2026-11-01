@@ -1,16 +1,25 @@
 import { createFileRoute, useNavigate, redirect, Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchGamesPaginated, signOut } from '@/lib/supabase'
-import { fetchUserProfile } from '@/lib/socialSupabase'
-import type { Game } from '@/types'
-import { Plus, BarChart2, Settings, LogOut, ChevronRight, Trophy, Clock, Dices } from 'lucide-react'
+import {
+  countPendingRequests,
+  fetchFriends,
+  fetchMyGroupSummaries,
+  fetchUserProfile,
+  type GroupSummary,
+} from '@/lib/socialSupabase'
+import type { Friend, Game } from '@/types'
+import { Plus, LogOut, ChevronRight, Trophy, Clock, Dices, UserPlus, Users } from 'lucide-react'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
 import { getGameTypeLabel } from '@/lib/gameTypes'
 import { NotificationBell } from '@/components/NotificationBell'
+import { PlayerAvatar } from '@/components/PlayerAvatar'
 
 const PAGE_SIZE = 5
+const HOME_GROUP_LIMIT = 3
+const HOME_AVATAR_LIMIT = 4
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -44,6 +53,9 @@ function HomePage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
+  const [groups, setGroups] = useState<GroupSummary[]>([])
+  const [friends, setFriends] = useState<Friend[]>([])
+  const [pendingRequests, setPendingRequests] = useState(0)
 
   useEffect(() => {
     loadData()
@@ -57,14 +69,20 @@ function HomePage() {
     const profileRes = await fetchUserProfile(user.id)
     setDisplayName(profileRes.data?.display_name ?? user.email?.split('@')[0] ?? '')
 
-    const [activeRes, finishedRes] = await Promise.all([
+    const [activeRes, finishedRes, groupList, friendsRes, pendingCount] = await Promise.all([
       fetchGamesPaginated(user.id, 'active', 0, PAGE_SIZE),
       fetchGamesPaginated(user.id, 'finished', 0, PAGE_SIZE),
+      fetchMyGroupSummaries(user.id),
+      fetchFriends(user.id),
+      countPendingRequests(user.id),
     ])
 
     const active = activeRes.data ?? []
     const finished = finishedRes.data ?? []
 
+    setGroups(groupList)
+    setFriends(friendsRes.data ?? [])
+    setPendingRequests(pendingCount)
     setActiveGames(active)
     setFinishedGames(finished)
     setActiveOffset(PAGE_SIZE)
@@ -138,32 +156,20 @@ function HomePage() {
             Yeni Oyun Başlat
           </motion.button>
 
-          <Link to="/tracker" className="block">
-            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
-              <span className="text-2xl">🀄</span>
-              <span className="text-white text-sm font-semibold">Oyun Takip</span>
-            </button>
+          <Link
+            to="/tracker"
+            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-14 flex items-center justify-center gap-2 transition-colors"
+          >
+            <span className="text-xl">🀄</span>
+            <span className="text-white text-sm font-semibold">Oyun Takip</span>
           </Link>
 
-          <Link to="/dice" className="block">
-            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex flex-col items-center gap-2 transition-colors">
-              <Dices size={22} className="text-[#e94560]" />
-              <span className="text-white text-sm font-semibold">Zar At</span>
-            </button>
-          </Link>
-
-          <Link to="/stats" className="col-span-2 block">
-            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex items-center justify-center gap-2 transition-colors">
-              <BarChart2 size={22} className="text-[#e94560]" />
-              <span className="text-white text-sm font-semibold">İstatistikler</span>
-            </button>
-          </Link>
-
-          <Link to="/settings" className="col-span-2 block">
-            <button className="w-full bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl p-4 flex items-center justify-center gap-2 transition-colors">
-              <Settings size={20} className="text-[#a0aec0]" />
-              <span className="text-white text-sm font-semibold">Ayarlar</span>
-            </button>
+          <Link
+            to="/dice"
+            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-14 flex items-center justify-center gap-2 transition-colors"
+          >
+            <Dices size={20} className="text-[#e94560]" />
+            <span className="text-white text-sm font-semibold">Zar At</span>
           </Link>
         </div>
 
@@ -173,6 +179,19 @@ function HomePage() {
           </div>
         ) : (
           <>
+            {pendingRequests > 0 && (
+              <Link
+                to="/friends"
+                className="mb-6 bg-[#f5a623]/10 border border-[#f5a623]/40 rounded-xl p-3 flex items-center gap-3"
+              >
+                <UserPlus size={18} className="text-[#f5a623] shrink-0" />
+                <span className="flex-1 min-w-0 text-white text-sm font-medium">
+                  {pendingRequests} arkadaşlık isteği bekliyor
+                </span>
+                <ChevronRight size={16} className="text-[#f5a623] shrink-0" />
+              </Link>
+            )}
+
             {activeGames.length > 0 && (
               <section className="mb-6">
                 <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -203,6 +222,9 @@ function HomePage() {
                 )}
               </section>
             )}
+
+            <GroupsSection groups={groups} />
+            <FriendsSection friends={friends} />
 
             {finishedGames.length > 0 && (
               <section>
@@ -256,6 +278,133 @@ function HomePage() {
         }}
       />
     </div>
+  )
+}
+
+function SectionHeader({
+  icon,
+  title,
+  linkTo,
+}: {
+  icon: ReactNode
+  title: string
+  linkTo: '/groups' | '/friends'
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider flex items-center gap-2">
+        {icon}
+        {title}
+      </h2>
+      <Link to={linkTo} className="text-[#e94560] text-xs font-semibold">
+        Tümü
+      </Link>
+    </div>
+  )
+}
+
+function GroupsSection({ groups }: { groups: GroupSummary[] }) {
+  if (groups.length === 0) {
+    return (
+      <section className="mb-6 bg-gradient-to-br from-[#e94560]/15 to-[#0f3460]/40 border border-[#2d3748] rounded-2xl p-4">
+        <p className="text-white font-semibold">Masanı grup yap</p>
+        <p className="text-[#a0aec0] text-sm mt-0.5">
+          Birlikte oynadığın oyunlar ve kazanma sıralaması tek yerde toplansın.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-3">
+          <Link
+            to="/groups"
+            search={{ create: true }}
+            className="h-10 rounded-xl bg-[#e94560] text-white text-sm font-bold flex items-center justify-center"
+          >
+            Grup Kur
+          </Link>
+          <Link
+            to="/join-group"
+            className="h-10 rounded-xl bg-[#0f3460] text-white text-sm font-semibold flex items-center justify-center"
+          >
+            Koda Katıl
+          </Link>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="mb-6">
+      <SectionHeader icon={<Users size={14} />} title={`Gruplarım (${groups.length})`} linkTo="/groups" />
+      <div className="flex flex-col gap-2">
+        {groups.slice(0, HOME_GROUP_LIMIT).map((group) => (
+          <Link
+            key={group.id}
+            to="/group/$groupId"
+            params={{ groupId: group.id }}
+            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-xl p-3 flex items-center gap-3 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold truncate">{group.name}</p>
+              <p className="text-[#718096] text-xs mt-0.5">
+                {group.members.length} üye · {group.gamesCount} oyun
+              </p>
+            </div>
+            <div className="flex shrink-0">
+              {group.members.slice(0, HOME_AVATAR_LIMIT).map((member, i) => (
+                <PlayerAvatar
+                  key={member.user_id}
+                  name={member.name}
+                  avatarUrl={member.avatar_url}
+                  size={30}
+                  className={i > 0 ? '-ml-2' : ''}
+                />
+              ))}
+            </div>
+            <ChevronRight size={16} className="text-[#718096] shrink-0" />
+          </Link>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function FriendsSection({ friends }: { friends: Friend[] }) {
+  if (friends.length === 0) {
+    return (
+      <Link
+        to="/friends"
+        className="mb-6 bg-[#16213e] border border-[#2d3748] rounded-xl p-3 flex items-center gap-3"
+      >
+        <span className="w-10 h-10 rounded-full bg-[#0f3460] flex items-center justify-center shrink-0">
+          <UserPlus size={18} className="text-[#e94560]" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-white text-sm font-semibold">Arkadaşlarını ekle</span>
+          <span className="block text-[#718096] text-xs">İstatistiklerinizi karşılaştırın</span>
+        </span>
+        <ChevronRight size={16} className="text-[#718096] shrink-0" />
+      </Link>
+    )
+  }
+
+  return (
+    <section className="mb-6">
+      <SectionHeader icon={<UserPlus size={14} />} title={`Arkadaşlarım (${friends.length})`} linkTo="/friends" />
+      <div className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4">
+        {friends.map((friend) => {
+          const name = friend.friend_profile?.display_name ?? '?'
+          return (
+            <Link
+              key={friend.id}
+              to="/friend/$friendId"
+              params={{ friendId: friend.friend_id }}
+              className="flex flex-col items-center gap-1 w-14 shrink-0"
+            >
+              <PlayerAvatar name={name} avatarUrl={friend.friend_profile?.avatar_url} size={48} />
+              <span className="text-white text-xs truncate w-full text-center">{name}</span>
+            </Link>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
