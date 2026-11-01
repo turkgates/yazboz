@@ -8,6 +8,7 @@ import {
   fetchFriends,
   fetchMyGroupSummaries,
   fetchUserProfile,
+  PENDING_INVITE_KEY,
   type GroupSummary,
 } from '@/lib/socialSupabase'
 import type { Friend, Game } from '@/types'
@@ -60,6 +61,12 @@ function HomePage() {
   const [pendingMerges, setPendingMerges] = useState(0)
 
   useEffect(() => {
+    const inviteCode = sessionStorage.getItem(PENDING_INVITE_KEY)
+    if (inviteCode) {
+      sessionStorage.removeItem(PENDING_INVITE_KEY)
+      navigate({ to: '/join-group', search: { code: inviteCode }, replace: true })
+      return
+    }
     loadData()
   }, [])
 

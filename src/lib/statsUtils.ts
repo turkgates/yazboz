@@ -55,6 +55,7 @@ export interface PlayerGameResult {
   entity: string
   rank: number
   won: boolean
+  last: boolean
 }
 
 export function getPlayerGameResult(
@@ -73,7 +74,9 @@ export function getPlayerGameResult(
   // Eşit puanlılar aynı sırayı paylaşır
   const rank = 1 + ranking.filter((r) => r.total < row.total).length
   const winnersCount = isEsliGame(game) ? 1 : getWinnersCount(game.settings)
-  return { entity, rank, won: rank <= winnersCount }
+  const totals = ranking.map((r) => r.total)
+  const last = row.total === Math.max(...totals) && row.total !== Math.min(...totals)
+  return { entity, rank, won: rank <= winnersCount, last }
 }
 
 export function getRoundWinner(game: Game, round: Round): string | null {
@@ -229,6 +232,7 @@ export interface ComparisonStats {
   wins: number
   winRate: number
   avgRank: number | null
+  roundWins: number
   roundWinRate: number
   okeyThrows: number
   okeyBurns: number
@@ -280,6 +284,7 @@ export function computeComparisonStats(
     wins,
     winRate: played > 0 ? Math.round((wins / played) * 100) : 0,
     avgRank: soloGames > 0 ? Math.round((rankTotal / soloGames) * 10) / 10 : null,
+    roundWins,
     roundWinRate: rounds > 0 ? Math.round((roundWins / rounds) * 100) : 0,
     okeyThrows,
     okeyBurns,

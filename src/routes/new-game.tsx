@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, createGame, createPlayer } from '@/lib/supabase'
-import { fetchPlayerSuggestionsWithSocial } from '@/lib/socialSupabase'
+import { fetchGroupMembers, fetchPlayerSuggestionsWithSocial } from '@/lib/socialSupabase'
 import { useSettingsStore, useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, ChevronDown, Plus, Minus, User, Play } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
@@ -13,6 +13,9 @@ import { GameRulesModal } from '@/components/GameRulesModal'
 import type { GameRulesKey } from '@/lib/gameRules'
 
 export const Route = createFileRoute('/new-game')({
+  validateSearch: (search: Record<string, unknown>): { group?: string } => ({
+    group: typeof search.group === 'string' ? search.group : undefined,
+  }),
   beforeLoad: async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) throw redirect({ to: '/auth' })
@@ -21,6 +24,8 @@ export const Route = createFileRoute('/new-game')({
 })
 
 type MainCategory = 'cezali' | 'sayili' | '101' | 'bankolu'
+
+const MAX_PLAYERS = 4
 
 const GAME_TYPES: {
   key: MainCategory
@@ -42,6 +47,7 @@ interface PlayerSlot {
 
 function NewGamePage() {
   const navigate = useNavigate()
+  const { group: groupId } = Route.useSearch()
   const { settings: cezaliSettings } = useSettingsStore()
   const { startGame } = useGameStore()
 
@@ -77,6 +83,27 @@ function NewGamePage() {
   useEffect(() => {
     if (isEsli) setPlayerCount(4)
   }, [isEsli])
+
+  // Gruptan başlatılan oyunda üyeler hazır gelir, kişi kendini ilk sırada görür
+  useEffect(() => {
+    if (!groupId) return
+    const fillFromGroup = async () => {
+      const [{ data: { user } }, { data: members }] = await Promise.all([
+        supabase.auth.getUser(),
+        fetchGroupMembers(groupId),
+      ])
+      const names = [...members]
+        .sort((a, b) => Number(b.user_id === user?.id) - Number(a.user_id === user?.id))
+        .map((m) => m.profiles?.display_name?.trim())
+        .filter((name): name is string => !!name)
+        .slice(0, MAX_PLAYERS)
+      if (names.length < 2) return
+
+      setPlayerCount(names.length)
+      setSlots((prev) => prev.map((slot, i) => ({ ...slot, name: names[i] ?? '' })))
+    }
+    fillFromGroup()
+  }, [groupId])
 
   const handleCategoryChange = (cat: MainCategory) => {
     setCategory(cat)

@@ -223,14 +223,6 @@ export async function fetchGroupMembers(groupId: string) {
   return { data: result, error: null }
 }
 
-export async function fetchGroupGamesCount(groupId: string): Promise<number> {
-  const { count } = await supabase
-    .from('group_games')
-    .select('*', { count: 'exact', head: true })
-    .eq('group_id', groupId)
-  return count ?? 0
-}
-
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = ''
@@ -271,6 +263,9 @@ export async function createGroup(name: string, ownerId: string): Promise<Group>
 
   throw lastError ?? new Error('Davet kodu oluşturulamadı, tekrar deneyin')
 }
+
+// Giriş yapmamış biri davet bağlantısını açarsa kod girişten sonra kullanılır
+export const PENDING_INVITE_KEY = 'yazboz-pending-invite'
 
 export async function joinGroupByCode(code: string): Promise<Group> {
   const { data, error } = await supabase.rpc('join_group_by_invite_code', {
@@ -658,47 +653,41 @@ export async function countGamesForPlayerName(userId: string, playerName: string
   ).length
 }
 
+// Üye sonradan katılsa veya oyuncu birleştirilse de ortak oyunlar gruba bağlanır
+export async function syncGroupGames(groupId: string) {
+  const { error } = await supabase.rpc('sync_group_games', { p_group_id: groupId })
+  if (error) console.error('Grup oyunları bağlanamadı:', error)
+}
+
 export async function fetchGroupGamesWithRounds(groupId: string) {
-  const { data: links } = await supabase
-    .from('group_games')
-    .select('game_id')
-    .eq('group_id', groupId)
+  const links = await fetchAllPages<{ game_id: string }>((from, to) =>
+    supabase.from('group_games').select('game_id').eq('group_id', groupId).order('game_id').range(from, to)
+  )
 
-  const gameIds = (links ?? []).map((l) => l.game_id)
-  if (!gameIds.length) {
-    return { games: [] as import('@/types').Game[], roundsByGame: {} as Record<string, import('@/types').Round[]> }
+  const games: Game[] = []
+  for (let i = 0; i < links.length; i += ROUNDS_GAME_CHUNK) {
+    const gameIds = links.slice(i, i + ROUNDS_GAME_CHUNK).map((l) => l.game_id)
+    const { data, error } = await supabase
+      .from('games')
+      .select('*')
+      .in('id', gameIds)
+      .eq('status', 'finished')
+    if (error) throw error
+    games.push(...((data ?? []) as Game[]))
   }
 
-  const { data: games } = await supabase
-    .from('games')
-    .select('*')
-    .in('id', gameIds)
-    .eq('status', 'finished')
+  games.sort(
+    (a, b) =>
+      new Date(b.finished_at ?? b.created_at).getTime() -
+      new Date(a.finished_at ?? a.created_at).getTime()
+  )
 
-  const { data: rounds } = await supabase
-    .from('rounds')
-    .select('*')
-    .in('game_id', gameIds)
-
-  const roundsByGame: Record<string, import('@/types').Round[]> = {}
-  for (const round of rounds ?? []) {
-    if (!roundsByGame[round.game_id]) roundsByGame[round.game_id] = []
-    roundsByGame[round.game_id].push(round)
-  }
-
-  return { games: (games ?? []) as import('@/types').Game[], roundsByGame }
+  return { games, roundsByGame: groupRoundsByGame(await fetchRoundsOfGames(games)) }
 }
 
 const ROUNDS_GAME_CHUNK = 100
 
-// ownerIds yoksa RLS kendi, arkadaş ve ortak grup oyunlarını döndürür
-async function fetchFinishedGames(ownerIds?: string[]) {
-  const games = await fetchAllPages<Game>((from, to) => {
-    let query = supabase.from('games').select('*').eq('status', 'finished')
-    if (ownerIds) query = query.in('user_id', ownerIds)
-    return query.order('created_at', { ascending: false }).order('id').range(from, to)
-  })
-
+async function fetchRoundsOfGames(games: Game[]) {
   const rounds: Round[] = []
   for (let i = 0; i < games.length; i += ROUNDS_GAME_CHUNK) {
     const gameIds = games.slice(i, i + ROUNDS_GAME_CHUNK).map((g) => g.id)
@@ -714,7 +703,18 @@ async function fetchFinishedGames(ownerIds?: string[]) {
       ))
     )
   }
+  return rounds
+}
 
+// ownerIds yoksa RLS kendi, arkadaş ve ortak grup oyunlarını döndürür
+async function fetchFinishedGames(ownerIds?: string[]) {
+  const games = await fetchAllPages<Game>((from, to) => {
+    let query = supabase.from('games').select('*').eq('status', 'finished')
+    if (ownerIds) query = query.in('user_id', ownerIds)
+    return query.order('created_at', { ascending: false }).order('id').range(from, to)
+  })
+
+  const rounds = await fetchRoundsOfGames(games)
   return { games, rounds, roundsByGame: groupRoundsByGame(rounds) }
 }
 
