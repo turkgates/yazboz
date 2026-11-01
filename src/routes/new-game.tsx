@@ -4,12 +4,12 @@ import { motion } from 'framer-motion'
 import { supabase, createGame, createPlayer } from '@/lib/supabase'
 import { fetchPlayerSuggestionsWithSocial } from '@/lib/socialSupabase'
 import { useSettingsStore, useGameStore } from '@/stores/gameStore'
-import { ArrowLeft, Plus, Minus, User, Play } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Plus, Minus, User, Play } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SayiliOkeySettings } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { DEFAULT_101_SETTINGS, DEFAULT_SAYILI_SETTINGS } from '@/lib/gameTypes'
-import { GameRulesModal, RulesHelpButton } from '@/components/GameRulesModal'
+import { GameRulesModal } from '@/components/GameRulesModal'
 import type { GameRulesKey } from '@/lib/gameRules'
 
 export const Route = createFileRoute('/new-game')({
@@ -21,6 +21,19 @@ export const Route = createFileRoute('/new-game')({
 })
 
 type MainCategory = 'cezali' | 'sayili' | '101' | 'bankolu'
+
+const GAME_TYPES: {
+  key: MainCategory
+  emoji: string
+  label: string
+  description: string
+  rules: GameRulesKey
+}[] = [
+  { key: 'cezali', emoji: '🎴', label: 'Cezalı Okey', description: 'Ceza puanıyla oynanan klasik mod', rules: 'cezali_okey' },
+  { key: 'sayili', emoji: '🔢', label: 'Sayılı Okey', description: 'Sayı düşürerek oynanan mod', rules: 'sayili_okey' },
+  { key: 'bankolu', emoji: '💥', label: 'Bankolu', description: 'Banko zorunlu cezalı mod', rules: 'bankolu_cezali_okey' },
+  { key: '101', emoji: '💯', label: '101 Okey', description: 'Taş toplamlı bitiş sistemi', rules: 'yuzbir_okey' },
+]
 
 interface PlayerSlot {
   name: string
@@ -49,6 +62,7 @@ function NewGamePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showRules, setShowRules] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [rulesGameType, setRulesGameType] = useState<GameRulesKey>('cezali_okey')
 
   const isEsli = subtype === 'esli'
@@ -71,6 +85,7 @@ function NewGamePage() {
   }
 
   const updateSlot = (index: number, update: Partial<PlayerSlot>) => {
+    setError('')
     setSlots((prev) => {
       const next = [...prev]
       next[index] = { ...next[index], ...update }
@@ -85,6 +100,12 @@ function NewGamePage() {
 
   const handleStart = async () => {
     const filledNames = getPlayerNames()
+
+    // Skorlar isimle tutulduğu için aynı isim iki oyuncunun puanını birbirine yazar
+    if (new Set(filledNames.map((n) => n.toLocaleLowerCase('tr'))).size !== filledNames.length) {
+      setError('Aynı isim iki kez kullanılamaz')
+      return
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -134,413 +155,253 @@ function NewGamePage() {
       created_at: new Date().toISOString(),
     }
 
-    startGame(localGame)
+    const { error: createError } = await createGame(gameData)
 
-    try {
-      await createGame(gameData)
-    } catch (err) {
-      console.error('Create game error:', err)
+    if (createError) {
+      console.error('Create game error:', createError)
+      setError('Oyun başlatılamadı: ' + createError.message)
+      setLoading(false)
+      return
     }
 
+    startGame(localGame)
     navigate({ to: '/game/$gameId', params: { gameId } })
     setLoading(false)
   }
 
-  const subtypeLabel = (_cat: MainCategory, sub: GameSubtype) =>
-    sub === 'esli' ? 'Eşli' : 'Tekli'
+  const selectedType = GAME_TYPES.find((t) => t.key === category)!
+
+  const settingsSummary = [
+    category === 'sayili' ? `Başlangıç ${sayiliSettings.startScore}` : `${totalRounds} el`,
+    `${winnersCount} kazanan`,
+    ...(category === '101' && yuzbirSettings.katlamali ? ['Katlamalı'] : []),
+  ].join(' · ')
+
+  const renderPlayerInput = (i: number) => (
+    <PlayerAutocompleteInput
+      key={i}
+      index={i}
+      value={slots[i].name}
+      playerId={slots[i].playerId}
+      userId={userId}
+      onChange={(name, playerId) => updateSlot(i, { name, playerId })}
+    />
+  )
 
   return (
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
-        <div className="flex items-center gap-3 py-4 max-w-lg mx-auto">
+        <div className="flex items-center gap-3 py-3 max-w-lg mx-auto">
           <button
             onClick={() => navigate({ to: '/home' })}
+            aria-label="Geri"
             className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-[#a0aec0]"
           >
             <ArrowLeft size={18} />
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-white">Yeni Oyun</h1>
-            <p className="text-xs text-[#718096]">Oyun tipi seçin</p>
-          </div>
+          <h1 className="text-lg font-bold text-white">Yeni Oyun</h1>
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full overflow-y-auto pb-24">
-        <div className="mb-5">
-          <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-            Oyun Tipi
-          </p>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCategoryChange('cezali')}
-                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
-                  category === 'cezali'
-                    ? 'bg-[#e94560]/10 border-[#e94560]'
-                    : 'bg-[#16213e] border-[#2d3748]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">🎴</span>
-                  <div>
-                    <p className="text-white font-semibold">Cezalı Okey</p>
-                    <p className="text-[#718096] text-xs">Ceza puanı ile oynanan klasik mod</p>
-                  </div>
-                </div>
-              </button>
-              <RulesHelpButton
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setRulesGameType('cezali_okey')
-                  setShowRules(true)
-                }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCategoryChange('sayili')}
-                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
-                  category === 'sayili'
-                    ? 'bg-[#e94560]/10 border-[#e94560]'
-                    : 'bg-[#16213e] border-[#2d3748]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">🔢</span>
-                  <div>
-                    <p className="text-white font-semibold">Sayılı Okey</p>
-                    <p className="text-[#718096] text-xs">Sayı düşürme ile oynanan mod</p>
-                  </div>
-                </div>
-              </button>
-              <RulesHelpButton
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setRulesGameType('sayili_okey')
-                  setShowRules(true)
-                }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCategoryChange('bankolu')}
-                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
-                  category === 'bankolu'
-                    ? 'bg-[#e94560]/10 border-[#e94560]'
-                    : 'bg-[#16213e] border-[#2d3748]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">💥</span>
-                  <div>
-                    <p className="text-white font-semibold">Bankolu Cezalı Okey</p>
-                    <p className="text-[#718096] text-xs">Banko zorunlu cezalı mod</p>
-                  </div>
-                </div>
-              </button>
-              <RulesHelpButton
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setRulesGameType('bankolu_cezali_okey')
-                  setShowRules(true)
-                }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCategoryChange('101')}
-                className={`flex-1 rounded-2xl p-4 border text-left transition-all ${
-                  category === '101'
-                    ? 'bg-[#e94560]/10 border-[#e94560]'
-                    : 'bg-[#16213e] border-[#2d3748]'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">💯</span>
-                  <div>
-                    <p className="text-white font-semibold">101 Okey</p>
-                    <p className="text-[#718096] text-xs">Taş toplamlı bitiş sistemi</p>
-                  </div>
-                </div>
-              </button>
-              <RulesHelpButton
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setRulesGameType('yuzbir_okey')
-                  setShowRules(true)
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-            {category === 'cezali' ? 'Oyun Şekli' : 'Oyun Tipi'}
-          </p>
-          <div className="flex gap-3">
-            {(['solo', 'esli'] as GameSubtype[]).map((sub) => (
-              <button
-                key={sub}
-                type="button"
-                onClick={() => setSubtype(sub)}
-                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
-                  subtype === sub
-                    ? 'bg-[#e94560] text-white shadow-lg shadow-[#e94560]/20'
-                    : 'bg-[#16213e] border border-[#2d3748] text-[#a0aec0]'
-                }`}
-              >
-                {subtypeLabel(category, sub)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-            Kaç kişi kazanır?
-          </p>
-          <div className="flex gap-3">
-            {[1, 2, 3].map((count) => (
-              <button
-                key={count}
-                type="button"
-                onClick={() => setWinnersCount(count)}
-                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
-                  winnersCount === count
-                    ? 'bg-[#e94560] text-white shadow-lg shadow-[#e94560]/20'
-                    : 'bg-[#16213e] border border-[#2d3748] text-[#a0aec0]'
-                }`}
-              >
-                {count} kişi
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {category === '101' && (
-          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-5 space-y-4">
-            <SettingRow label="Katlamalı">
-              <div className="flex gap-2">
+      <div className="flex-1 px-4 pt-4 pb-32 max-w-lg mx-auto w-full space-y-5">
+        <section>
+          <div className="grid grid-cols-2 gap-2">
+            {GAME_TYPES.map((type) => {
+              const isSelected = category === type.key
+              return (
                 <button
+                  key={type.key}
                   type="button"
-                  onClick={() => setYuzbirSettings((s) => ({ ...s, katlamali: true }))}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                    yuzbirSettings.katlamali ? 'bg-[#e94560] text-white' : 'bg-[#0f3460] text-[#a0aec0]'
+                  aria-pressed={isSelected}
+                  onClick={() => handleCategoryChange(type.key)}
+                  className={`h-14 px-3 rounded-2xl border flex items-center gap-2.5 text-left transition-colors ${
+                    isSelected
+                      ? 'bg-[#e94560]/15 border-[#e94560]'
+                      : 'bg-[#16213e] border-[#2d3748]'
                   }`}
                 >
-                  Var ✓
+                  <span className="text-xl">{type.emoji}</span>
+                  <span className="text-white text-sm font-semibold leading-tight">{type.label}</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setYuzbirSettings((s) => ({ ...s, katlamali: false }))}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                    !yuzbirSettings.katlamali ? 'bg-[#e94560] text-white' : 'bg-[#0f3460] text-[#a0aec0]'
-                  }`}
-                >
-                  Yok
-                </button>
+              )
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-3 mt-2 px-1">
+            <p className="text-[#718096] text-xs">{selectedType.description}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setRulesGameType(selectedType.rules)
+                setShowRules(true)
+              }}
+              className="text-[#a0aec0] text-xs font-medium underline underline-offset-2 shrink-0"
+            >
+              Kurallar
+            </button>
+          </div>
+        </section>
+
+        <Segmented
+          options={[
+            { value: 'solo' as GameSubtype, label: 'Tekli' },
+            { value: 'esli' as GameSubtype, label: 'Eşli' },
+          ]}
+          value={subtype}
+          onChange={setSubtype}
+        />
+
+        <section>
+          <div className="flex items-center justify-between mb-2 min-h-8">
+            <p className="text-[#a0aec0] text-sm font-medium">Oyuncular</p>
+            {!isEsli && (
+              <div className="w-32">
+                <Segmented
+                  size="sm"
+                  options={[2, 3, 4].map((count) => ({ value: count, label: String(count) }))}
+                  value={playerCount}
+                  onChange={setPlayerCount}
+                />
               </div>
-            </SettingRow>
-            {yuzbirSettings.katlamali && (
-              <p className="text-[#718096] text-xs">
-                Her elde açılış için minimum puan bir önceki elki en yüksek açılış + 1 olur.
-              </p>
             )}
           </div>
-        )}
 
-        {category === 'sayili' && (
-          <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4 mb-5 space-y-4">
-            <SettingRow label="Başlangıç Sayısı">
-              <NumberStepper
-                value={sayiliSettings.startScore}
-                min={1}
-                max={99}
-                onChange={(v) => setSayiliSettings((s) => ({ ...s, startScore: v }))}
-              />
-            </SettingRow>
-
-            <SettingRow label="Gösterge">
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSayiliSettings((s) => ({ ...s, showIndicator: true }))}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                    sayiliSettings.showIndicator
-                      ? 'bg-[#e94560] text-white'
-                      : 'bg-[#0f3460] text-[#a0aec0]'
-                  }`}
-                >
-                  Var ✓
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSayiliSettings((s) => ({ ...s, showIndicator: false }))}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                    !sayiliSettings.showIndicator
-                      ? 'bg-[#e94560] text-white'
-                      : 'bg-[#0f3460] text-[#a0aec0]'
-                  }`}
-                >
-                  Yok
-                </button>
-              </div>
-            </SettingRow>
-
-            {sayiliSettings.showIndicator && (
-              <SettingRow label="Gösterge Düşüş">
-                <NumberStepper
-                  value={sayiliSettings.indicatorValue}
-                  min={1}
-                  max={10}
-                  onChange={(v) => setSayiliSettings((s) => ({ ...s, indicatorValue: v }))}
-                />
-              </SettingRow>
-            )}
-
-            <div className="border-t border-[#2d3748] pt-3 space-y-3">
-              <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider">
-                Puan Düşme Değerleri
-              </p>
-              <SettingRow label="Normal Bitiş">
-                <NumberStepper
-                  value={sayiliSettings.normalFinish}
-                  min={1}
-                  max={20}
-                  onChange={(v) => setSayiliSettings((s) => ({ ...s, normalFinish: v }))}
-                />
-              </SettingRow>
-              <SettingRow label="Okey / Çiftten">
-                <NumberStepper
-                  value={sayiliSettings.okeyOrDouble}
-                  min={1}
-                  max={20}
-                  onChange={(v) => setSayiliSettings((s) => ({ ...s, okeyOrDouble: v }))}
-                />
-              </SettingRow>
-              <SettingRow label="Okey + Çiftten">
-                <NumberStepper
-                  value={sayiliSettings.okeyAndDouble}
-                  min={1}
-                  max={30}
-                  onChange={(v) => setSayiliSettings((s) => ({ ...s, okeyAndDouble: v }))}
-                />
-              </SettingRow>
-            </div>
-          </div>
-        )}
-
-        {!isEsli && (
-          <div className="mb-5">
-            <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-              Oyuncu Sayısı
-            </p>
-            <div className="flex gap-3">
-              {[2, 3, 4].map((count) => (
-                <button
-                  key={count}
-                  onClick={() => setPlayerCount(count)}
-                  className={`flex-1 py-3 rounded-xl font-bold text-lg transition-all ${
-                    playerCount === count
-                      ? 'bg-[#e94560] text-white shadow-lg shadow-[#e94560]/20'
-                      : 'bg-[#16213e] border border-[#2d3748] text-[#a0aec0]'
-                  }`}
-                >
-                  {count}
-                </button>
+          {isEsli ? (
+            <div className="flex flex-col gap-3">
+              {[0, 1].map((team) => (
+                <div key={team} className="flex flex-col gap-2">
+                  <p className="text-[#718096] text-xs font-medium px-1">Takım {team + 1}</p>
+                  {renderPlayerInput(team * 2)}
+                  {renderPlayerInput(team * 2 + 1)}
+                </div>
               ))}
             </div>
-          </div>
-        )}
-
-        <div className="mb-5">
-          <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-            {isEsli ? 'Oyuncular (4 kişi, 2 takım)' : 'Oyuncu İsimleri'}
-          </p>
-          {isEsli && (
-            <div className="flex gap-2 mb-3">
-              <span className="flex-1 text-center text-[10px] text-[#718096] font-semibold bg-[#0f3460]/50 py-1 rounded-lg">
-                Takım 1
-              </span>
-              <span className="flex-1 text-center text-[10px] text-[#718096] font-semibold bg-[#0f3460]/50 py-1 rounded-lg">
-                Takım 2
-              </span>
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: effectivePlayerCount }).map((_, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                {isEsli && (
-                  <p className="text-[#718096] text-[10px] mb-1 ml-1">
-                    {i < 2 ? 'Takım 1' : 'Takım 2'} — Oyuncu {(i % 2) + 1}
-                  </p>
-                )}
-                <PlayerAutocompleteInput
-                  index={i}
-                  value={slots[i].name}
-                  playerId={slots[i].playerId}
-                  userId={userId}
-                  onChange={(name, playerId) => updateSlot(i, { name, playerId })}
-                />
-              </motion.div>
-            ))}
-          </div>
-        </div>
-
-        {(category === 'cezali' || category === '101' || category === 'bankolu') && (
-          <div className="mb-8">
-            <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-              El Sayısı
-            </p>
-            <div className="bg-[#16213e] border border-[#2d3748] rounded-xl p-4 flex items-center justify-between">
-              <button
-                onClick={() => setTotalRounds(Math.max(5, totalRounds - 1))}
-                className="w-10 h-10 rounded-lg bg-[#0f3460] text-white flex items-center justify-center active:scale-95 transition-transform"
-              >
-                <Minus size={18} />
-              </button>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-white">{totalRounds}</p>
-                <p className="text-[#718096] text-xs">el</p>
-              </div>
-              <button
-                onClick={() => setTotalRounds(Math.min(21, totalRounds + 1))}
-                className="w-10 h-10 rounded-lg bg-[#0f3460] text-white flex items-center justify-center active:scale-95 transition-transform"
-              >
-                <Plus size={18} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {error && <p className="text-red-400 text-sm mb-4 text-center">{error}</p>}
-
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={handleStart}
-          disabled={loading}
-          className="w-full bg-[#e94560] hover:bg-[#c73652] disabled:opacity-60 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 text-lg shadow-lg shadow-[#e94560]/20 transition-colors"
-        >
-          {loading ? (
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
           ) : (
-            <>
-              <Play size={22} />
-              Oyunu Başlat
-            </>
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: effectivePlayerCount }).map((_, i) => renderPlayerInput(i))}
+            </div>
           )}
-        </motion.button>
+        </section>
+
+        <section className="bg-[#16213e] border border-[#2d3748] rounded-2xl overflow-hidden">
+          <button
+            type="button"
+            aria-expanded={showSettings}
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-full min-h-12 px-4 flex items-center justify-between gap-3 text-left"
+          >
+            <span className="text-white text-sm font-medium">Ayarlar</span>
+            <span className="flex items-center gap-2 text-[#718096] text-xs min-w-0">
+              <span className="truncate">{settingsSummary}</span>
+              <ChevronDown size={16} className={`shrink-0 transition-transform ${showSettings ? 'rotate-180' : ''}`} />
+            </span>
+          </button>
+
+          {showSettings && (
+            <div className="px-4 pb-4 pt-1 space-y-4 border-t border-[#2d3748]">
+              <div className="pt-3 space-y-4">
+                {category !== 'sayili' && (
+                  <SettingRow label="El sayısı">
+                    <NumberStepper value={totalRounds} min={5} max={21} onChange={setTotalRounds} />
+                  </SettingRow>
+                )}
+
+                <SettingRow label="Kaç kişi kazanır?">
+                  <NumberStepper value={winnersCount} min={1} max={3} onChange={setWinnersCount} />
+                </SettingRow>
+
+                {category === '101' && (
+                  <>
+                    <SettingRow label="Katlamalı">
+                      <OnOffToggle
+                        value={yuzbirSettings.katlamali}
+                        onChange={(katlamali) => setYuzbirSettings((s) => ({ ...s, katlamali }))}
+                      />
+                    </SettingRow>
+                    {yuzbirSettings.katlamali && (
+                      <p className="text-[#718096] text-xs">
+                        Her elde en az, önceki elin en yüksek açılışının 1 fazlasıyla açılır.
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {category === 'sayili' && (
+                  <>
+                    <SettingRow label="Başlangıç sayısı">
+                      <NumberStepper
+                        value={sayiliSettings.startScore}
+                        min={1}
+                        max={99}
+                        onChange={(v) => setSayiliSettings((s) => ({ ...s, startScore: v }))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Gösterge">
+                      <OnOffToggle
+                        value={sayiliSettings.showIndicator}
+                        onChange={(showIndicator) => setSayiliSettings((s) => ({ ...s, showIndicator }))}
+                      />
+                    </SettingRow>
+                    {sayiliSettings.showIndicator && (
+                      <SettingRow label="Gösterge düşüşü">
+                        <NumberStepper
+                          value={sayiliSettings.indicatorValue}
+                          min={1}
+                          max={10}
+                          onChange={(v) => setSayiliSettings((s) => ({ ...s, indicatorValue: v }))}
+                        />
+                      </SettingRow>
+                    )}
+                    <SettingRow label="Normal bitiş">
+                      <NumberStepper
+                        value={sayiliSettings.normalFinish}
+                        min={1}
+                        max={20}
+                        onChange={(v) => setSayiliSettings((s) => ({ ...s, normalFinish: v }))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Okey veya çiftten">
+                      <NumberStepper
+                        value={sayiliSettings.okeyOrDouble}
+                        min={1}
+                        max={20}
+                        onChange={(v) => setSayiliSettings((s) => ({ ...s, okeyOrDouble: v }))}
+                      />
+                    </SettingRow>
+                    <SettingRow label="Okey ve çiftten">
+                      <NumberStepper
+                        value={sayiliSettings.okeyAndDouble}
+                        min={1}
+                        max={30}
+                        onChange={(v) => setSayiliSettings((s) => ({ ...s, okeyAndDouble: v }))}
+                      />
+                    </SettingRow>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="fixed bottom-0 inset-x-0 z-10 bg-[#1a1a2e]/95 backdrop-blur border-t border-[#2d3748] safe-bottom">
+        <div className="max-w-lg mx-auto px-4 pt-3 pb-4">
+          {error && <p className="text-red-400 text-sm mb-2 text-center">{error}</p>}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={handleStart}
+            disabled={loading}
+            className="w-full h-14 bg-[#e94560] hover:bg-[#c73652] disabled:opacity-60 text-white font-bold rounded-2xl flex items-center justify-center gap-2 text-base shadow-lg shadow-[#e94560]/20 transition-colors"
+          >
+            {loading ? (
+              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <Play size={20} />
+                Oyunu Başlat
+              </>
+            )}
+          </motion.button>
+        </div>
       </div>
 
       <GameRulesModal
@@ -549,6 +410,50 @@ function NewGamePage() {
         onClose={() => setShowRules(false)}
       />
     </div>
+  )
+}
+
+function Segmented<T extends string | number>({
+  options,
+  value,
+  onChange,
+  size = 'md',
+}: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (value: T) => void
+  size?: 'md' | 'sm'
+}) {
+  return (
+    <div className="flex gap-1 p-1 bg-[#16213e] border border-[#2d3748] rounded-xl">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={`flex-1 rounded-lg font-semibold transition-colors ${
+            size === 'sm' ? 'h-7 text-xs' : 'h-10 text-sm'
+          } ${value === option.value ? 'bg-[#e94560] text-white' : 'text-[#a0aec0]'}`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function OnOffToggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      onClick={() => onChange(!value)}
+      className={`w-12 h-7 rounded-full p-0.5 transition-colors ${value ? 'bg-[#e94560]' : 'bg-[#2d3748]'}`}
+    >
+      <span className={`block w-6 h-6 rounded-full bg-white transition-transform ${value ? 'translate-x-5' : ''}`} />
+    </button>
   )
 }
 

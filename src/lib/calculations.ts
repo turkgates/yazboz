@@ -235,9 +235,13 @@ export function inferRoundInputFromScores(
     }
 
     const score = round.scores[player] ?? 0
-    const burnType = detectOkeyBurnType(score, round.color, settings, fakeOkey)
+    // Yakma cezası elin türünden gelir: başka türün cezasına denk gelen puan yakma değildir
+    const burnType = deriveOkeyBurnType(round.okey_thrown, round.double_finish)
+    const burnPenalty = fakeOkey
+      ? getFakeOkeyBurnPenalty(burnType)
+      : getOkeyBurnPenalty(burnType, round.color, settings)
 
-    if (burnType) {
+    if (score === burnPenalty) {
       playerStatuses[player] = 'okey_burned'
       okeyBurnTypes[player] = burnType
     } else {
