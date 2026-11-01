@@ -2,21 +2,30 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
-import { joinGroupByCode } from '@/lib/socialSupabase'
+import { joinGroupByCode, PENDING_INVITE_KEY } from '@/lib/socialSupabase'
 import { BackButton } from '@/components/layout/BackButton'
 import { ArrowRight } from 'lucide-react'
 
+const cleanCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+
 export const Route = createFileRoute('/join-group')({
-  beforeLoad: async () => {
+  validateSearch: (search: Record<string, unknown>): { code?: string } => ({
+    code: search.code === undefined ? undefined : String(search.code),
+  }),
+  beforeLoad: async ({ search }) => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session) throw redirect({ to: '/auth' })
+    if (!session) {
+      if (search.code) sessionStorage.setItem(PENDING_INVITE_KEY, search.code)
+      throw redirect({ to: '/auth' })
+    }
   },
   component: JoinGroupPage,
 })
 
 function JoinGroupPage() {
   const navigate = useNavigate()
-  const [code, setCode] = useState('')
+  const { code: invitedCode } = Route.useSearch()
+  const [code, setCode] = useState(() => cleanCode(invitedCode ?? ''))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -28,8 +37,7 @@ function JoinGroupPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { navigate({ to: '/auth' }); return }
       const group = await joinGroupByCode(code.trim())
-      navigate({ to: '/groups', replace: true })
-      console.log('Gruba katılındı:', group.name)
+      navigate({ to: '/group/$groupId', params: { groupId: group.id }, replace: true })
     } catch (err: unknown) {
       console.error('Detaylı hata:', err)
       setError(err instanceof Error ? err.message : 'Hata oluştu')
@@ -64,7 +72,7 @@ function JoinGroupPage() {
               type="text"
               value={code}
               onChange={(e) => {
-                setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                setCode(cleanCode(e.target.value))
                 setError('')
               }}
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
