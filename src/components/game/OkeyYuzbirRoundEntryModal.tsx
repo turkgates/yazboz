@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
+import { useSaveLock } from '@/hooks/useSaveLock'
 import type { Game } from '@/types'
 import { getTeams, isEsliGame, teamLabel } from '@/lib/gameTypes'
 import {
@@ -22,7 +23,7 @@ interface Props {
   roundNumber: number
   katlamali: boolean
   prevMaxOpenScore: number | null
-  onSave: (input: OkeyYuzbirRoundInput) => void
+  onSave: (input: OkeyYuzbirRoundInput) => Promise<boolean>
   onClose: () => void
 }
 
@@ -50,6 +51,11 @@ export function OkeyYuzbirRoundEntryModal({
   onSave,
   onClose,
 }: Props) {
+  const { saving, runSave } = useSaveLock()
+  const handleClose = () => {
+    if (!saving) onClose()
+  }
+
   const esli = isEsliGame(game)
   const teams = esli ? getTeams(game) : []
   const entities: string[] = esli ? teams.map(teamLabel) : game.players
@@ -131,7 +137,7 @@ export function OkeyYuzbirRoundEntryModal({
     setSaveError('')
     const inputs = buildInputs()
     const parsedMax = katlamali && maxOpenScore ? parseInt(maxOpenScore) : undefined
-    onSave({ playerInputs: inputs, maxOpenScore: parsedMax })
+    void runSave(() => onSave({ playerInputs: inputs, maxOpenScore: parsedMax }))
   }
 
   return (
@@ -140,7 +146,7 @@ export function OkeyYuzbirRoundEntryModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-end justify-center"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <motion.div
@@ -373,7 +379,7 @@ export function OkeyYuzbirRoundEntryModal({
         <div className="px-5 pb-5 flex gap-3 shrink-0 border-t border-[#2d3748] pt-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl"
           >
             İptal
@@ -382,10 +388,10 @@ export function OkeyYuzbirRoundEntryModal({
             <button
               type="button"
               onClick={handleSave}
-              disabled={!winnerEntity}
+              disabled={saving || !winnerEntity}
               className="flex-[2] bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl"
             >
-              Kaydet
+              {saving ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
           )}
         </div>

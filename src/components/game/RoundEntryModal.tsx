@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
+import { useSaveLock } from '@/hooks/useSaveLock'
 import type { Color, Game, Round, RoundInput, CezaliGameSettings } from '@/types'
 import { COLOR_LABELS, DEFAULT_SETTINGS } from '@/types'
 import { isCezaliSettings, teamLabel } from '@/lib/gameTypes'
@@ -17,7 +18,7 @@ interface RoundEntryModalProps {
   roundNumber: number
   editingRound?: Round | null
   teams?: string[][]
-  onSave: (input: RoundInput) => void
+  onSave: (input: RoundInput) => Promise<boolean>
   onClose: () => void
 }
 
@@ -39,6 +40,11 @@ export function RoundEntryModal({
   onSave,
   onClose,
 }: RoundEntryModalProps) {
+  const { saving, runSave } = useSaveLock()
+  const handleClose = () => {
+    if (!saving) onClose()
+  }
+
   const settings: CezaliGameSettings = isCezaliSettings(game.settings) ? game.settings : DEFAULT_SETTINGS
   const isEditing = !!editingRound
   const teamMode = teams !== undefined && teams.length > 0
@@ -239,14 +245,16 @@ export function RoundEntryModal({
       ? teamLabels.map(buildTeamInput)
       : game.players.map(buildPlayerInput)
 
-    onSave({
-      color: effectiveColor,
-      okeyThrown: fakeOkey ? false : okeyThrown,
-      doubleFinish,
-      fakeOkey,
-      noWinner,
-      playerResults,
-    })
+    void runSave(() =>
+      onSave({
+        color: effectiveColor,
+        okeyThrown: fakeOkey ? false : okeyThrown,
+        doubleFinish,
+        fakeOkey,
+        noWinner,
+        playerResults,
+      })
+    )
   }
 
   return (
@@ -255,7 +263,7 @@ export function RoundEntryModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-end justify-center"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <motion.div
@@ -534,7 +542,7 @@ export function RoundEntryModal({
         <div className="px-5 pb-5 flex gap-3 shrink-0 border-t border-[#2d3748] pt-4">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl"
           >
             İptal
@@ -542,10 +550,10 @@ export function RoundEntryModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={!fakeOkey && !color}
+            disabled={saving || (!fakeOkey && !color)}
             className="flex-[2] bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-colors"
           >
-            Kaydet
+            {saving ? 'Kaydediliyor...' : 'Kaydet'}
           </button>
         </div>
       </motion.div>

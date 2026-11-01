@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { v4 as uuidv4 } from 'uuid'
-import { fetchGameWithRounds, insertRound, updateGame } from '@/lib/supabase'
+import { fetchGameWithRounds, insertRound, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, updateGame } from '@/lib/supabase'
 import { useGameStore } from '@/stores/gameStore'
 import type { SayiliOkeySettings } from '@/types'
 import {
@@ -115,6 +115,11 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
     setSaving(false)
 
     if (error) {
+      if (isDuplicateRoundError(error)) {
+        await loadGameData()
+        alert(DUPLICATE_ROUND_MESSAGE)
+        return false
+      }
       alert(opts.isIndicatorOnly ? 'Gösterge kaydedilemedi: ' + error.message : 'El kaydedilemedi: ' + error.message)
       return false
     }
@@ -266,6 +271,14 @@ function FinishTypeModal({
   onSelect: (type: SayiliFinishType) => void
   onClose: () => void
 }) {
+  // Kapanış animasyonu sırasında ikinci basış aynı eli yeniden göndermesin
+  const selectedRef = useRef(false)
+  const handleSelect = (type: SayiliFinishType) => {
+    if (selectedRef.current) return
+    selectedRef.current = true
+    onSelect(type)
+  }
+
   const options: { type: SayiliFinishType; label: string; value: number }[] = [
     { type: 'normal', label: 'Normal', value: settings.normalFinish },
     { type: 'okey', label: 'Okey', value: settings.okeyOrDouble },
@@ -295,7 +308,7 @@ function FinishTypeModal({
             <button
               key={opt.type}
               type="button"
-              onClick={() => onSelect(opt.type)}
+              onClick={() => handleSelect(opt.type)}
               className="w-full bg-[#0f3460] hover:bg-[#1a4a7a] text-white font-semibold py-3.5 rounded-xl text-left px-4"
             >
               {opt.label} (-{opt.value})

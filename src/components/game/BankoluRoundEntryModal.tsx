@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { useSaveLock } from '@/hooks/useSaveLock'
 import type { Color, Game } from '@/types'
 import { COLOR_LABELS } from '@/types'
 import { getTeams, isBankoluEsli, teamLabel } from '@/lib/gameTypes'
@@ -24,7 +25,7 @@ interface Props {
   game: Game
   roundNumber: number
   currentBankos: string[]
-  onSave: (payload: BankoluRoundSavePayload) => void
+  onSave: (payload: BankoluRoundSavePayload) => Promise<boolean>
   onClose: () => void
 }
 
@@ -45,6 +46,11 @@ export function BankoluRoundEntryModal({
   onSave,
   onClose,
 }: Props) {
+  const { saving, runSave } = useSaveLock()
+  const handleClose = () => {
+    if (!saving) onClose()
+  }
+
   const esli = isBankoluEsli(game)
   const teams = esli ? getTeams(game) : []
 
@@ -158,14 +164,16 @@ export function BankoluRoundEntryModal({
       }
     }
 
-    onSave({
-      color: fakeOkey ? 'black' : color!,
-      fakeOkey,
-      okeyThrown,
-      doubleFinish,
-      scores,
-      bankoPlayers: currentBankos,
-    })
+    void runSave(() =>
+      onSave({
+        color: fakeOkey ? 'black' : color!,
+        fakeOkey,
+        okeyThrown,
+        doubleFinish,
+        scores,
+        bankoPlayers: currentBankos,
+      })
+    )
   }
 
   const setStatus = (player: string, status: PlayerUIStatus) => {
@@ -190,7 +198,7 @@ export function BankoluRoundEntryModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-end justify-center"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <motion.div
@@ -378,11 +386,11 @@ export function BankoluRoundEntryModal({
         {saveError && <p className="px-5 text-red-400 text-sm text-center">{saveError}</p>}
 
         <div className="px-5 pb-5 flex gap-3 shrink-0 border-t border-[#2d3748] pt-4">
-          <button type="button" onClick={onClose} className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl">
+          <button type="button" onClick={handleClose} className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl">
             İptal
           </button>
-          <button type="button" onClick={handleSave} className="flex-[2] bg-green-500 text-white font-bold py-3.5 rounded-xl">
-            Kaydet
+          <button type="button" onClick={handleSave} disabled={saving} className="flex-[2] bg-green-500 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl">
+            {saving ? 'Kaydediliyor...' : 'Kaydet'}
           </button>
         </div>
       </motion.div>

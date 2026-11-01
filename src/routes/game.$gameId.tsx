@@ -6,6 +6,8 @@ import {
   fetchGameWithRounds,
   fetchPlayers,
   insertRound,
+  isDuplicateRoundError,
+  DUPLICATE_ROUND_MESSAGE,
   updateGame,
   updateRound,
   deleteRound,
@@ -91,8 +93,8 @@ function GamePage() {
     )
   }
 
-  const handleRoundSaved = async (input: RoundInput) => {
-    if (!currentGame) return
+  const handleRoundSaved = async (input: RoundInput): Promise<boolean> => {
+    if (!currentGame) return false
 
     const scores = buildScores(input)
 
@@ -108,13 +110,13 @@ function GamePage() {
       if (error) {
         console.error('Round kayıt hatası:', error)
         alert('El kaydedilemedi: ' + error.message)
-        return
+        return false
       }
 
       updateRoundInStore(editingRound.id, input)
       setShowModal(false)
       setEditingRound(null)
-      return
+      return true
     }
 
     const roundNumber = rounds.length + 1
@@ -133,8 +135,14 @@ function GamePage() {
 
     if (error) {
       console.error('Round kayıt hatası:', error)
+      if (isDuplicateRoundError(error)) {
+        setShowModal(false)
+        await loadGameData()
+        alert(DUPLICATE_ROUND_MESSAGE)
+        return true
+      }
       alert('El kaydedilemedi: ' + error.message)
-      return
+      return false
     }
 
     if (data) {
@@ -154,6 +162,7 @@ function GamePage() {
       }
       navigate({ to: '/game-over/$gameId', params: { gameId } })
     }
+    return true
   }
 
   const handleDeleteRound = async (roundId: string) => {

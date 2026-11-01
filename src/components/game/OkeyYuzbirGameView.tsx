@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Trophy } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import { supabase, fetchGameWithRounds, fetchPlayers, insertRound, updateGame } from '@/lib/supabase'
+import { supabase, fetchGameWithRounds, fetchPlayers, insertRound, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, updateGame } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import { getTeams, isEsliGame, teamLabel } from '@/lib/gameTypes'
@@ -34,14 +34,17 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
   const [saving, setSaving] = useState(false)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
 
+  const refetchGame = async () => {
+    const { game: g, rounds: r } = await fetchGameWithRounds(gameId)
+    if (g) {
+      setGame(g)
+      setRounds(r)
+      loadGame(g, r)
+    }
+  }
+
   useEffect(() => {
-    fetchGameWithRounds(gameId).then(({ game: g, rounds: r }) => {
-      if (g) {
-        setGame(g)
-        setRounds(r)
-        loadGame(g, r)
-      }
-    })
+    refetchGame()
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
         const { data: pData } = await fetchPlayers(data.user.id)
@@ -77,8 +80,8 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
   const getAvatarUrl = (name: string) =>
     players.find((p) => p.name === name)?.avatar_url ?? null
 
-  const handleSave = async (input: OkeyYuzbirRoundInput) => {
-    if (!currentGame_) return
+  const handleSave = async (input: OkeyYuzbirRoundInput): Promise<boolean> => {
+    if (!currentGame_) return false
     setSaving(true)
     try {
       const scores: Record<string, number> = {}
@@ -108,11 +111,25 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
         double_finish: false,
         scores,
       }
-      const savedRound: Round = { ...newRound, created_at: new Date().toISOString() }
+      const { data, error } = await insertRound(newRound)
+
+      if (error) {
+        console.error('Round kayıt hatası:', error)
+        if (isDuplicateRoundError(error)) {
+          setShowEntry(false)
+          await refetchGame()
+          alert(DUPLICATE_ROUND_MESSAGE)
+          return true
+        }
+        alert('El kaydedilemedi: ' + error.message)
+        return false
+      }
+
+      const savedRound: Round = data ?? { ...newRound, created_at: new Date().toISOString() }
       setRounds((prev) => [...prev, savedRound])
       appendRound(savedRound)
       setShowEntry(false)
-      await insertRound(newRound)
+      return true
     } finally {
       setSaving(false)
     }
