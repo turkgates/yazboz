@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import type { Game, Round } from '@/types'
-import { fetchPlayerGamesWithRounds } from '@/lib/supabase'
+import { fetchMyStatsGames } from '@/lib/socialSupabase'
 import {
   computePlayerProfileStats,
   computePlayer101Stats,
+  filterGamesWithPlayer,
   getPlayerGameResult,
   getPlayerRoundScore,
   getRankEmoji,
@@ -224,11 +225,13 @@ export function PlayerStats({
 
     if (!playerName || !ownerUserId) return
     setLoading(true)
-    fetchPlayerGamesWithRounds(ownerUserId, playerName).then(({ games, roundsByGame }) => {
-      setAllGames(games)
-      setAllRoundsByGame(roundsByGame)
-      setLoading(false)
-    })
+    fetchMyStatsGames(ownerUserId, playerName)
+      .then(({ games, roundsByGame }) => {
+        setAllGames(filterGamesWithPlayer(games, playerName))
+        setAllRoundsByGame(roundsByGame)
+      })
+      .catch((err: unknown) => console.error('İstatistik yükleme hatası:', err))
+      .finally(() => setLoading(false))
   }, [playerName, ownerUserId, externalGames, externalRoundsByGame])
 
   const filteredGames = useMemo(

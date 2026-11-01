@@ -194,6 +194,36 @@ export function filterGamesWithPlayer(games: Game[], playerName: string): Game[]
   return games.filter((g) => g.players.some((p) => p.toLowerCase() === lower))
 }
 
+// Oyunlar isimle eşleşir: başkasının kaydındaki aynı isim, ancak o kişi beni oyuncu
+// listesine bağladıysa benimdir. Aksi halde aynı adlı yerel oyuncu bana yazılırdı.
+export function selectMyGames(
+  games: Game[],
+  myId: string,
+  myName: string,
+  linkedOwnerIds: Set<string>
+): Game[] {
+  return filterGamesWithPlayer(games, myName).filter(
+    (g) => g.user_id === myId || linkedOwnerIds.has(g.user_id)
+  )
+}
+
+export function selectFriendGames(
+  games: Game[],
+  friendId: string,
+  friendName: string,
+  myId: string,
+  myLinkedFriendIds: Set<string>
+): Game[] {
+  return filterGamesWithPlayer(games, friendName).filter(
+    (g) => g.user_id === friendId || (g.user_id === myId && myLinkedFriendIds.has(friendId))
+  )
+}
+
+export function intersectGames(a: Game[], b: Game[]): Game[] {
+  const ids = new Set(b.map((g) => g.id))
+  return a.filter((g) => ids.has(g.id))
+}
+
 export interface ComparisonStats {
   games: number
   wins: number

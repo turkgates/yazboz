@@ -3,10 +3,12 @@ import { X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   checkPendingMergeRequest,
+  getSupabaseErrorMessage,
   markMergePrompted,
+  requestPlayerMerge,
   type PendingMergeRequest,
 } from '@/lib/socialSupabase'
-import { performMerge, skipMerge } from '@/lib/friendUtils'
+import { dispatchPlayersRefresh, skipMerge } from '@/lib/friendUtils'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 
 export interface MergeRequestModalProps {
@@ -16,6 +18,7 @@ export interface MergeRequestModalProps {
   friendRequestId?: string
   onComplete: () => void
   onSkip: () => void
+  onCancel?: () => void
 }
 
 interface LocalPlayerOption {
@@ -32,11 +35,13 @@ export function MergeRequestModal({
   friendRequestId,
   onComplete,
   onSkip,
+  onCancel,
 }: MergeRequestModalProps) {
   const [localPlayers, setLocalPlayers] = useState<LocalPlayerOption[]>([])
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | 'none' | null>(null)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState('')
   const autoSkipStarted = useRef(false)
 
   useEffect(() => {
@@ -93,6 +98,7 @@ export function MergeRequestModal({
     if (!selectedPlayerId) return
 
     setProcessing(true)
+    setError('')
     try {
       if (selectedPlayerId === 'none') {
         await skipMerge(friendUserId)
@@ -104,12 +110,13 @@ export function MergeRequestModal({
       const local = localPlayers.find((p) => p.id === selectedPlayerId)
       if (!local) return
 
-      await performMerge(selectedPlayerId, friendUserId, {
-        display_name: friendName,
-        avatar_url: friendAvatarUrl,
-      })
+      await requestPlayerMerge(selectedPlayerId, friendUserId)
       await finishModal()
+      dispatchPlayersRefresh()
       onComplete()
+    } catch (err: unknown) {
+      console.error('Birleştirme isteği hatası:', err)
+      setError(getSupabaseErrorMessage(err, 'İstek gönderilemedi'))
     } finally {
       setProcessing(false)
     }
@@ -122,12 +129,24 @@ export function MergeRequestModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/70 px-4 pb-safe-bottom">
       <div className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-5 w-full max-w-sm mb-4 sm:mb-0">
-        <h3 className="text-white font-bold text-base mb-3">🔗 Profil Birleştirme</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-white font-bold text-base">🔗 Profil Birleştirme</h3>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              aria-label="Kapat"
+              className="text-[#718096] hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-3 mb-4">
           <PlayerAvatar name={friendName} avatarUrl={friendAvatarUrl} size={48} />
           <p className="text-[#a0aec0] text-sm">
-            <span className="text-white font-medium">{friendName}</span> arkadaşınızla ilişkilendir
+            Hangi yerel oyuncun <span className="text-white font-medium">{friendName}</span>?
           </p>
         </div>
 
@@ -189,8 +208,10 @@ export function MergeRequestModal({
         </div>
 
         <p className="text-[#718096] text-xs mb-4">
-          Seçilen oyuncunun tüm istatistikleri arkadaşınızla birleştirilecek.
+          {friendName} onaylarsa seçtiğin oyuncunun oyunları onun istatistiklerine eklenir. Onay gelene kadar hiçbir şey değişmez.
         </p>
+
+        {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
 
         <button
           type="button"
@@ -198,7 +219,7 @@ export function MergeRequestModal({
           disabled={processing || !selectedPlayerId}
           className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 rounded-lg text-black font-bold"
         >
-          {processing ? '...' : selectedPlayerId === 'none' ? 'Atla' : 'Birleştir'}
+          {processing ? '...' : selectedPlayerId === 'none' ? 'Atla' : 'Onaya Gönder'}
         </button>
       </div>
     </div>

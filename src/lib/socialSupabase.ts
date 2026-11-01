@@ -1,6 +1,6 @@
-import { supabase } from '@/lib/supabase'
-import { groupRoundsByGame } from '@/lib/statsUtils'
-import type { Friend, FriendRequest, Game, Group, GroupMember, Profile, Round, SavedPlayer } from '@/types'
+import { fetchAllPages, supabase } from '@/lib/supabase'
+import { filterGamesWithPlayer, groupRoundsByGame } from '@/lib/statsUtils'
+import type { Friend, FriendRequest, Game, Group, GroupMember, MergeRequest, Profile, Round, SavedPlayer } from '@/types'
 
 export function getSupabaseErrorMessage(err: unknown, fallback = 'Bir hata oluştu'): string {
   if (err instanceof Error) return err.message
@@ -689,33 +689,15 @@ export async function fetchGroupGamesWithRounds(groupId: string) {
   return { games: (games ?? []) as import('@/types').Game[], roundsByGame }
 }
 
-const FETCH_PAGE_SIZE = 1000
 const ROUNDS_GAME_CHUNK = 100
 
-// Supabase tek sorguda en fazla 1000 satır döndürür ve fazlasını sessizce keser
-async function fetchAllPages<T>(
-  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
-): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
-    const { data, error } = await fetchPage(from, from + FETCH_PAGE_SIZE - 1)
-    if (error) throw error
-    rows.push(...(data ?? []))
-    if ((data ?? []).length < FETCH_PAGE_SIZE) return rows
-  }
-}
-
-// Sahip filtresi yok: RLS kendi, arkadaş ve ortak grup oyunlarını döndürür
-export async function fetchVisibleFinishedGames() {
-  const games = await fetchAllPages<Game>((from, to) =>
-    supabase
-      .from('games')
-      .select('*')
-      .eq('status', 'finished')
-      .order('created_at', { ascending: false })
-      .order('id')
-      .range(from, to)
-  )
+// ownerIds yoksa RLS kendi, arkadaş ve ortak grup oyunlarını döndürür
+async function fetchFinishedGames(ownerIds?: string[]) {
+  const games = await fetchAllPages<Game>((from, to) => {
+    let query = supabase.from('games').select('*').eq('status', 'finished')
+    if (ownerIds) query = query.in('user_id', ownerIds)
+    return query.order('created_at', { ascending: false }).order('id').range(from, to)
+  })
 
   const rounds: Round[] = []
   for (let i = 0; i < games.length; i += ROUNDS_GAME_CHUNK) {
@@ -733,7 +715,137 @@ export async function fetchVisibleFinishedGames() {
     )
   }
 
-  return { games, roundsByGame: groupRoundsByGame(rounds) }
+  return { games, rounds, roundsByGame: groupRoundsByGame(rounds) }
+}
+
+export function fetchVisibleFinishedGames() {
+  return fetchFinishedGames()
+}
+
+export function fetchFinishedGamesOf(ownerId: string) {
+  return fetchFinishedGames([ownerId])
+}
+
+export interface PlayerLinks {
+  // Oyuncu listesinde beni bağlamış kişiler: onların kayıtlarındaki adım benim
+  linkedOwnerIds: Set<string>
+  // Benim listemde bağladığım arkadaşlar
+  myLinkedFriendIds: Set<string>
+}
+
+export async function fetchPlayerLinks(userId: string): Promise<PlayerLinks> {
+  const { data, error } = await supabase
+    .from('players')
+    .select('user_id, linked_user_id')
+    .or(`user_id.eq.${userId},linked_user_id.eq.${userId}`)
+    .not('linked_user_id', 'is', null)
+
+  if (error) console.error('Oyuncu bağlantıları yüklenemedi:', error)
+
+  const rows = (data ?? []) as { user_id: string; linked_user_id: string }[]
+  return {
+    linkedOwnerIds: new Set(
+      rows.filter((r) => r.linked_user_id === userId && r.user_id !== userId).map((r) => r.user_id)
+    ),
+    myLinkedFriendIds: new Set(
+      rows.filter((r) => r.user_id === userId && r.linked_user_id !== userId).map((r) => r.linked_user_id)
+    ),
+  }
+}
+
+// Kişisel istatistik: kendi kayıtları ve kendisini bağlayan arkadaşların kayıtlarında oynadığı oyunlar
+export async function fetchMyStatsGames(userId: string, playerName: string) {
+  const { linkedOwnerIds } = await fetchPlayerLinks(userId)
+  const { games, rounds } = await fetchFinishedGames([userId, ...linkedOwnerIds])
+
+  const linkedGameIds = new Set(
+    filterGamesWithPlayer(
+      games.filter((g) => g.user_id !== userId),
+      playerName
+    ).map((g) => g.id)
+  )
+  const myGames = games.filter((g) => g.user_id === userId || linkedGameIds.has(g.id))
+  const myGameIds = new Set(myGames.map((g) => g.id))
+  const myRounds = rounds.filter((r) => myGameIds.has(r.game_id))
+
+  return { games: myGames, rounds: myRounds, roundsByGame: groupRoundsByGame(myRounds) }
+}
+
+// ── Merge requests ────────────────────────────────────────────────────────
+
+export async function fetchPendingMergeApprovals(userId: string): Promise<MergeRequest[]> {
+  const { data, error } = await supabase
+    .from('merge_requests')
+    .select('id, requester_id, target_id, local_player_id, local_player_name, status, created_at')
+    .eq('target_id', userId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+
+  if (error) console.error('Birleştirme onayları yüklenemedi:', error)
+
+  const rows = (data ?? []) as MergeRequest[]
+  if (!rows.length) return []
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .in('id', rows.map((r) => r.requester_id))
+  const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]))
+
+  return rows.map((r) => ({ ...r, requester_profile: profileMap[r.requester_id] }))
+}
+
+export async function countPendingMergeApprovals(userId: string): Promise<number> {
+  const { count } = await supabase
+    .from('merge_requests')
+    .select('*', { count: 'exact', head: true })
+    .eq('target_id', userId)
+    .eq('status', 'pending')
+  return count ?? 0
+}
+
+export async function fetchMergeRequest(requestId: string) {
+  return supabase
+    .from('merge_requests')
+    .select('id, requester_id, target_id, local_player_id, local_player_name, status, created_at')
+    .eq('id', requestId)
+    .maybeSingle<MergeRequest>()
+}
+
+export async function fetchMyMergeRequestTo(userId: string, targetId: string) {
+  const { data } = await supabase
+    .from('merge_requests')
+    .select('id, requester_id, target_id, local_player_id, local_player_name, status, created_at')
+    .eq('requester_id', userId)
+    .eq('target_id', targetId)
+    .maybeSingle<MergeRequest>()
+  return data
+}
+
+export async function countLocalPlayers(userId: string): Promise<number> {
+  const { count } = await supabase
+    .from('players')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('linked_user_id', null)
+  return count ?? 0
+}
+
+export async function requestPlayerMerge(localPlayerId: string, targetId: string) {
+  const { error } = await supabase.rpc('request_player_merge', {
+    p_local_player_id: localPlayerId,
+    p_target_id: targetId,
+  })
+  if (error) throw error
+}
+
+export async function respondPlayerMerge(requestId: string, accept: boolean) {
+  const { data, error } = await supabase.rpc('respond_player_merge', {
+    p_request_id: requestId,
+    p_accept: accept,
+  })
+  if (error) throw error
+  return data as { accepted: boolean; merged_games?: number; skipped_games?: number }
 }
 
 export async function removeGroupMember(memberId: string) {

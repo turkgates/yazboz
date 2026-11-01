@@ -152,12 +152,25 @@ export interface Friend {
   friend_profile?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
 }
 
+export interface MergeRequest {
+  id: string
+  requester_id: string
+  target_id: string
+  local_player_id: string | null
+  local_player_name: string | null
+  status: 'pending' | 'accepted' | 'rejected' | 'skipped'
+  created_at: string
+  requester_profile?: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
+}
+
 export type NotificationType =
   | 'friend_request'
   | 'friend_accepted'
   | 'merge_request'
   | 'merge_done'
   | 'merge_notify'
+  | 'merge_approved'
+  | 'merge_rejected'
   | 'friend_removed'
   | 'group_joined'
   | 'group_left'

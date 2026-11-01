@@ -5,12 +5,15 @@ import { ChevronRight, UserPlus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   fetchFriends,
+  fetchPendingMergeApprovals,
   fetchPendingRequests,
+  fetchPlayerLinks,
   fetchSentRequests,
   fetchUserProfile,
   fetchVisibleFinishedGames,
   getSupabaseErrorMessage,
   respondToFriendRequest,
+  type PlayerLinks,
 } from '@/lib/socialSupabase'
 import {
   acceptFriendRequest,
@@ -21,13 +24,15 @@ import { markFriendRequestNotificationsRead } from '@/lib/notificationUtils'
 import {
   computeComparisonStats,
   computeHeadToHead,
-  filterGamesWithPlayer,
+  intersectGames,
+  selectFriendGames,
+  selectMyGames,
 } from '@/lib/statsUtils'
 import { AddFriendSheet } from '@/components/friends/AddFriendSheet'
 import { MergeRequestModal } from '@/components/MergeRequestModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { BackButton } from '@/components/layout/BackButton'
-import type { Friend, FriendRequest, Game, Profile, Round } from '@/types'
+import type { Friend, FriendRequest, Game, MergeRequest, Profile, Round } from '@/types'
 
 export const Route = createFileRoute('/friends')({
   beforeLoad: async () => {
@@ -43,6 +48,8 @@ function FriendsPage() {
   const [friends, setFriends] = useState<Friend[]>([])
   const [pending, setPending] = useState<FriendRequest[]>([])
   const [sent, setSent] = useState<FriendRequest[]>([])
+  const [mergeApprovals, setMergeApprovals] = useState<MergeRequest[]>([])
+  const [links, setLinks] = useState<PlayerLinks>({ linkedOwnerIds: new Set(), myLinkedFriendIds: new Set() })
   const [games, setGames] = useState<Game[] | null>(null)
   const [roundsByGame, setRoundsByGame] = useState<Record<string, Round[]>>({})
   const [loading, setLoading] = useState(true)
@@ -52,21 +59,24 @@ function FriendsPage() {
   const [mergeTarget, setMergeTarget] = useState<(MergePromptTarget & { requestId: string }) | null>(null)
 
   const loadFriends = async (uid: string) => {
-    const [friendsRes, pendingRes, sentRes] = await Promise.all([
+    const [friendsRes, pendingRes, sentRes, approvals] = await Promise.all([
       fetchFriends(uid),
       fetchPendingRequests(uid),
       fetchSentRequests(uid),
+      fetchPendingMergeApprovals(uid),
     ])
     setFriends(friendsRes.data ?? [])
     setPending(pendingRes.data ?? [])
     setSent(sentRes.data ?? [])
+    setMergeApprovals(approvals)
     dispatchPlayersRefresh()
   }
 
   // Yeni arkadaşın oyunları ancak arkadaşlıktan sonra okunabilir
-  const loadGames = async () => {
+  const loadGames = async (uid: string) => {
     try {
-      const visible = await fetchVisibleFinishedGames()
+      const [visible, playerLinks] = await Promise.all([fetchVisibleFinishedGames(), fetchPlayerLinks(uid)])
+      setLinks(playerLinks)
       setGames(visible.games)
       setRoundsByGame(visible.roundsByGame)
     } catch (err: unknown) {
@@ -84,7 +94,7 @@ function FriendsPage() {
       setProfile(profileRes.data)
       setLoading(false)
       // Liste istatistikleri beklemesin
-      loadGames()
+      loadGames(user.id)
     }
     load()
   }, [])
@@ -94,11 +104,13 @@ function FriendsPage() {
   const summaries = useMemo(() => {
     const map: Record<string, { played: number; winRate: number; myWins: number; friendWins: number; together: number }> = {}
     if (!games) return map
+    const myGames = selectMyGames(games, userId, myName, links.linkedOwnerIds)
     for (const friend of friends) {
       const name = friend.friend_profile?.display_name
       if (!name) continue
-      const stats = computeComparisonStats(name, filterGamesWithPlayer(games, name), roundsByGame)
-      const h2h = computeHeadToHead(myName, name, games, roundsByGame)
+      const friendGames = selectFriendGames(games, friend.friend_id, name, userId, links.myLinkedFriendIds)
+      const stats = computeComparisonStats(name, friendGames, roundsByGame)
+      const h2h = computeHeadToHead(myName, name, intersectGames(myGames, friendGames), roundsByGame)
       map[friend.friend_id] = {
         played: stats.games,
         winRate: stats.winRate,
@@ -108,7 +120,7 @@ function FriendsPage() {
       }
     }
     return map
-  }, [friends, games, roundsByGame, myName])
+  }, [friends, games, roundsByGame, myName, userId, links])
 
   const sortedFriends = useMemo(() => {
     return [...friends].sort((a, b) => {
@@ -135,7 +147,7 @@ function FriendsPage() {
       }
       await markFriendRequestNotificationsRead(userId, req.sender_id)
       await loadFriends(userId)
-      if (accept) await loadGames()
+      if (accept) await loadGames(userId)
     } catch (err: unknown) {
       console.error('İstek yanıtlama hatası:', err)
       setError(getSupabaseErrorMessage(err, 'İşlem başarısız'))
@@ -146,7 +158,7 @@ function FriendsPage() {
 
   const handleAddChanged = async () => {
     await loadFriends(userId)
-    await loadGames()
+    await loadGames(userId)
   }
 
   const closeMerge = () => setMergeTarget(null)
@@ -220,6 +232,38 @@ function FriendsPage() {
                         Kabul Et
                       </button>
                     </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {mergeApprovals.length > 0 && (
+              <section>
+                <h2 className="text-[#f5a623] text-xs font-semibold uppercase tracking-wider mb-2">
+                  Birleştirme Onayları ({mergeApprovals.length})
+                </h2>
+                <div className="flex flex-col gap-2">
+                  {mergeApprovals.map((req) => (
+                    <Link
+                      key={req.id}
+                      to="/merge-request/$requestId"
+                      params={{ requestId: req.id }}
+                      className="bg-[#16213e] border border-[#f5a623]/30 rounded-xl p-3 flex items-center gap-3"
+                    >
+                      <PlayerAvatar
+                        name={req.requester_profile?.display_name ?? '?'}
+                        avatarUrl={req.requester_profile?.avatar_url}
+                        size={40}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">
+                          {req.requester_profile?.display_name}
+                        </p>
+                        <p className="text-[#718096] text-xs truncate">"{req.local_player_name}" oyuncusu</p>
+                      </div>
+                      <span className="shrink-0 text-[#f5a623] text-xs font-bold">İncele</span>
+                      <ChevronRight size={16} className="text-[#f5a623] shrink-0" />
+                    </Link>
                   ))}
                 </div>
               </section>

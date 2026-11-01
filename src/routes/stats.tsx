@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchPlayers } from '@/lib/supabase'
+import { fetchMyStatsGames, fetchUserProfile } from '@/lib/socialSupabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import {
   Gamepad2,
@@ -57,34 +58,20 @@ function StatsPage() {
     if (!user) return
     setUserId(user.id)
 
-    const [gamesRes, playersRes] = await Promise.all([
-      supabase
-        .from('games')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('status', 'finished')
-        .order('created_at', { ascending: false })
-        .returns<Game[]>(),
+    const [profileRes, playersRes] = await Promise.all([
+      fetchUserProfile(user.id),
       fetchPlayers(user.id),
     ])
 
-    const finishedGames = gamesRes.data ?? []
-
-    setAllGames(finishedGames)
-    setSavedPlayers(playersRes.data ?? [])
-
-    if (finishedGames.length > 0) {
-      const { data: rounds } = await supabase
-        .from('rounds')
-        .select('*')
-        .in('game_id', finishedGames.map((g) => g.id))
-        .returns<Round[]>()
-
-      setAllRounds(rounds ?? [])
-    } else {
-      setAllRounds([])
+    try {
+      const { games, rounds } = await fetchMyStatsGames(user.id, profileRes.data?.display_name ?? '')
+      setAllGames(games)
+      setAllRounds(rounds)
+    } catch (err: unknown) {
+      console.error('İstatistik yükleme hatası:', err)
     }
 
+    setSavedPlayers(playersRes.data ?? [])
     setLoading(false)
   }
 
