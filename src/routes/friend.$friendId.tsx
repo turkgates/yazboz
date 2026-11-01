@@ -1,20 +1,26 @@
 import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronRight, UserMinus } from 'lucide-react'
+import { ChevronRight, Link2, UserMinus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import {
   areFriends,
+  countLocalPlayers,
+  fetchMyMergeRequestTo,
+  fetchPlayerLinks,
   fetchUserProfile,
   fetchVisibleFinishedGames,
   getSupabaseErrorMessage,
   removeFriend,
+  type PlayerLinks,
 } from '@/lib/socialSupabase'
 import { dispatchPlayersRefresh } from '@/lib/friendUtils'
 import {
   computeComparisonStats,
   computeHeadToHead,
-  filterGamesWithPlayer,
+  intersectGames,
+  selectFriendGames,
+  selectMyGames,
   type ComparisonStats,
   type HeadToHeadOutcome,
 } from '@/lib/statsUtils'
@@ -22,9 +28,10 @@ import { getGameBadgeLabel } from '@/lib/gameTypes'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { BackButton } from '@/components/layout/BackButton'
 import { GameResultModal } from '@/components/GameResultModal'
+import { MergeRequestModal } from '@/components/MergeRequestModal'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { PlayerStats } from '@/components/PlayerStats'
-import type { Game, Profile, Round } from '@/types'
+import type { Game, MergeRequest, Profile, Round } from '@/types'
 
 export const Route = createFileRoute('/friend/$friendId')({
   beforeLoad: async () => {
@@ -43,11 +50,16 @@ function FriendDetailPage() {
   const { friendId } = Route.useParams()
   const navigate = useNavigate()
 
+  const [myId, setMyId] = useState('')
   const [me, setMe] = useState<Profile | null>(null)
   const [friend, setFriend] = useState<Profile | null>(null)
   const [isFriend, setIsFriend] = useState(false)
   const [games, setGames] = useState<Game[]>([])
   const [roundsByGame, setRoundsByGame] = useState<Record<string, Round[]>>({})
+  const [links, setLinks] = useState<PlayerLinks>({ linkedOwnerIds: new Set(), myLinkedFriendIds: new Set() })
+  const [localPlayerCount, setLocalPlayerCount] = useState(0)
+  const [mergeRequest, setMergeRequest] = useState<MergeRequest | null>(null)
+  const [showMerge, setShowMerge] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [tab, setTab] = useState<Tab>('compare')
@@ -57,20 +69,33 @@ function FriendDetailPage() {
   const [removing, setRemoving] = useState(false)
   const [removeError, setRemoveError] = useState('')
 
+  const loadMergeState = async (uid: string) => {
+    const [count, request] = await Promise.all([
+      countLocalPlayers(uid),
+      fetchMyMergeRequestTo(uid, friendId),
+    ])
+    setLocalPlayerCount(count)
+    setMergeRequest(request)
+  }
+
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       setLoadError(false)
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
+      setMyId(user.id)
 
       try {
-        const [meRes, friendRes, friendship, visible] = await Promise.all([
+        const [meRes, friendRes, friendship, visible, playerLinks] = await Promise.all([
           fetchUserProfile(user.id),
           fetchUserProfile(friendId),
           areFriends(user.id, friendId),
           fetchVisibleFinishedGames(),
+          fetchPlayerLinks(user.id),
         ])
+        await loadMergeState(user.id)
+        setLinks(playerLinks)
         setMe(meRes.data)
         setFriend(friendRes.data)
         setIsFriend(friendship)
@@ -89,13 +114,19 @@ function FriendDetailPage() {
   const myName = me?.display_name ?? ''
   const friendName = friend?.display_name ?? friend?.username ?? 'Arkadaş'
 
+  const friendGames = useMemo(
+    () => selectFriendGames(games, friendId, friendName, myId, links.myLinkedFriendIds),
+    [games, friendId, friendName, myId, links]
+  )
+  const myGames = useMemo(
+    () => selectMyGames(games, myId, myName, links.linkedOwnerIds),
+    [games, myId, myName, links]
+  )
   const headToHead = useMemo(
-    () => computeHeadToHead(myName, friendName, games, roundsByGame),
-    [myName, friendName, games, roundsByGame]
+    () => computeHeadToHead(myName, friendName, intersectGames(myGames, friendGames), roundsByGame),
+    [myName, friendName, myGames, friendGames, roundsByGame]
   )
   const sharedGames = useMemo(() => headToHead.games.map((g) => g.game), [headToHead])
-  const friendGames = useMemo(() => filterGamesWithPlayer(games, friendName), [games, friendName])
-  const myGames = useMemo(() => filterGamesWithPlayer(games, myName), [games, myName])
 
   const activeScope: Scope = scope ?? (sharedGames.length > 0 ? 'shared' : 'overall')
 
@@ -223,6 +254,17 @@ function FriendDetailPage() {
 
         {tab === 'compare' ? (
           <>
+            {mergeRequest?.status === 'pending' && (
+              <p className="bg-[#f5a623]/10 border border-[#f5a623]/40 rounded-xl p-3 text-sm text-white">
+                "{mergeRequest.local_player_name}" oyuncun için {friendName} onayı bekleniyor.
+              </p>
+            )}
+            {mergeRequest?.status === 'rejected' && (
+              <p className="bg-[#0f3460]/40 border border-[#2d3748] rounded-xl p-3 text-sm text-[#a0aec0]">
+                {friendName}, "{mergeRequest.local_player_name}" oyuncunla birleştirmeyi reddetti.
+              </p>
+            )}
+
             <section className="bg-[#16213e] border border-[#2d3748] rounded-2xl p-4">
               <div className="flex bg-[#0f3460]/50 rounded-lg p-0.5 mb-3">
                 {(
@@ -255,7 +297,7 @@ function FriendDetailPage() {
               <p className="text-[#718096] text-xs mt-3">
                 {activeScope === 'shared'
                   ? 'Yalnızca birlikte oynadığınız oyunlar.'
-                  : 'Senin, arkadaşının ve ortak gruplarının oyunları.'}
+                  : 'Kendi kayıtların ve arkadaşlarının seni oyuncu olarak bağladığı kayıtlar.'}
               </p>
             </section>
 
@@ -287,10 +329,27 @@ function FriendDetailPage() {
                 </div>
               </section>
             )}
+
+            {localPlayerCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowMerge(true)}
+                className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-xl p-3 flex items-center gap-3 text-left transition-colors"
+              >
+                <span className="w-10 h-10 rounded-full bg-[#0f3460] flex items-center justify-center shrink-0">
+                  <Link2 size={18} className="text-[#e94560]" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-white text-sm font-medium">Yerel oyuncumla birleştir</span>
+                  <span className="block text-[#718096] text-xs">{friendName} onaylarsa eski oyunlar ona geçer</span>
+                </span>
+                <ChevronRight size={16} className="text-[#718096] shrink-0" />
+              </button>
+            )}
           </>
         ) : (
           <>
-            <p className="text-[#718096] text-xs -mb-1">Senin, arkadaşının ve ortak gruplarının oyunları sayılır.</p>
+            <p className="text-[#718096] text-xs -mb-1">Arkadaşının kendi kayıtları ve senin ona bağladığın kayıtlar sayılır.</p>
             <PlayerStats
               playerName={friendName}
               games={friendGames}
@@ -307,6 +366,23 @@ function FriendDetailPage() {
         onClose={() => setSelectedGameId(null)}
         onViewScoreboard={() => setSelectedGameId(null)}
       />
+
+      {showMerge && (
+        <MergeRequestModal
+          friendUserId={friendId}
+          friendName={friendName}
+          friendAvatarUrl={friend.avatar_url}
+          onComplete={async () => {
+            setShowMerge(false)
+            await loadMergeState(myId)
+          }}
+          onSkip={async () => {
+            setShowMerge(false)
+            await loadMergeState(myId)
+          }}
+          onCancel={() => setShowMerge(false)}
+        />
+      )}
 
       <AnimatePresence>
         {confirmRemove && (

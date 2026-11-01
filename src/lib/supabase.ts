@@ -245,36 +245,17 @@ export async function fetchPlayerById(playerId: string) {
     .single<SavedPlayer>()
 }
 
-export async function fetchPlayerGamesWithRounds(userId: string, playerName: string) {
-  const { data: games, error: gamesError } = await supabase
-    .from('games')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('status', 'finished')
-    .order('created_at', { ascending: false })
-    .returns<Game[]>()
+const FETCH_PAGE_SIZE = 1000
 
-  const playerGames = (games ?? []).filter((g) =>
-    g.players.some((p) => p.toLowerCase() === playerName.toLowerCase())
-  )
-
-  if (gamesError || !playerGames.length) {
-    return { games: playerGames, roundsByGame: {} as Record<string, Round[]>, error: gamesError }
+// Supabase tek sorguda en fazla 1000 satır döndürür ve fazlasını sessizce keser
+export async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + FETCH_PAGE_SIZE - 1)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if ((data ?? []).length < FETCH_PAGE_SIZE) return rows
   }
-
-  const gameIds = playerGames.map((g) => g.id)
-  const { data: rounds, error: roundsError } = await supabase
-    .from('rounds')
-    .select('*')
-    .in('game_id', gameIds)
-    .order('round_number')
-    .returns<Round[]>()
-
-  const roundsByGame: Record<string, Round[]> = {}
-  for (const round of rounds ?? []) {
-    if (!roundsByGame[round.game_id]) roundsByGame[round.game_id] = []
-    roundsByGame[round.game_id].push(round)
-  }
-
-  return { games: playerGames, roundsByGame, error: roundsError }
 }

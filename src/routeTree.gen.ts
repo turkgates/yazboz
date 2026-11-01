@@ -25,6 +25,7 @@ import { Route as DiceRouteImport } from './routes/dice'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayerPlayerIdRouteImport } from './routes/player.$playerId'
+import { Route as MergeRequestRequestIdRouteImport } from './routes/merge-request.$requestId'
 import { Route as GroupGroupIdRouteImport } from './routes/group.$groupId'
 import { Route as GameGameIdRouteImport } from './routes/game.$gameId'
 import { Route as GameOverGameIdRouteImport } from './routes/game-over.$gameId'
@@ -110,6 +111,11 @@ const PlayerPlayerIdRoute = PlayerPlayerIdRouteImport.update({
   path: '/player/$playerId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MergeRequestRequestIdRoute = MergeRequestRequestIdRouteImport.update({
+  id: '/merge-request/$requestId',
+  path: '/merge-request/$requestId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupGroupIdRoute = GroupGroupIdRouteImport.update({
   id: '/group/$groupId',
   path: '/group/$groupId',
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
+  '/merge-request/$requestId': typeof MergeRequestRequestIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
 export interface FileRoutesByTo {
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
+  '/merge-request/$requestId': typeof MergeRequestRequestIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
 export interface FileRoutesById {
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
+  '/merge-request/$requestId': typeof MergeRequestRequestIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
 export interface FileRouteTypes {
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
+    | '/merge-request/$requestId'
     | '/player/$playerId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
+    | '/merge-request/$requestId'
     | '/player/$playerId'
   id:
     | '__root__'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
+    | '/merge-request/$requestId'
     | '/player/$playerId'
   fileRoutesById: FileRoutesById
 }
@@ -287,6 +299,7 @@ export interface RootRouteChildren {
   GameOverGameIdRoute: typeof GameOverGameIdRoute
   GameGameIdRoute: typeof GameGameIdRoute
   GroupGroupIdRoute: typeof GroupGroupIdRoute
+  MergeRequestRequestIdRoute: typeof MergeRequestRequestIdRoute
   PlayerPlayerIdRoute: typeof PlayerPlayerIdRoute
 }
 
@@ -404,6 +417,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlayerPlayerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/merge-request/$requestId': {
+      id: '/merge-request/$requestId'
+      path: '/merge-request/$requestId'
+      fullPath: '/merge-request/$requestId'
+      preLoaderRoute: typeof MergeRequestRequestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/group/$groupId': {
       id: '/group/$groupId'
       path: '/group/$groupId'
@@ -455,6 +475,7 @@ const rootRouteChildren: RootRouteChildren = {
   GameOverGameIdRoute: GameOverGameIdRoute,
   GameGameIdRoute: GameGameIdRoute,
   GroupGroupIdRoute: GroupGroupIdRoute,
+  MergeRequestRequestIdRoute: MergeRequestRequestIdRoute,
   PlayerPlayerIdRoute: PlayerPlayerIdRoute,
 }
 export const routeTree = rootRouteImport

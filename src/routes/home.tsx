@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, fetchGamesPaginated, signOut } from '@/lib/supabase'
 import {
+  countPendingMergeApprovals,
   countPendingRequests,
   fetchFriends,
   fetchMyGroupSummaries,
@@ -56,6 +57,7 @@ function HomePage() {
   const [groups, setGroups] = useState<GroupSummary[]>([])
   const [friends, setFriends] = useState<Friend[]>([])
   const [pendingRequests, setPendingRequests] = useState(0)
+  const [pendingMerges, setPendingMerges] = useState(0)
 
   useEffect(() => {
     loadData()
@@ -69,12 +71,13 @@ function HomePage() {
     const profileRes = await fetchUserProfile(user.id)
     setDisplayName(profileRes.data?.display_name ?? user.email?.split('@')[0] ?? '')
 
-    const [activeRes, finishedRes, groupList, friendsRes, pendingCount] = await Promise.all([
+    const [activeRes, finishedRes, groupList, friendsRes, pendingCount, mergeCount] = await Promise.all([
       fetchGamesPaginated(user.id, 'active', 0, PAGE_SIZE),
       fetchGamesPaginated(user.id, 'finished', 0, PAGE_SIZE),
       fetchMyGroupSummaries(user.id),
       fetchFriends(user.id),
       countPendingRequests(user.id),
+      countPendingMergeApprovals(user.id),
     ])
 
     const active = activeRes.data ?? []
@@ -83,6 +86,7 @@ function HomePage() {
     setGroups(groupList)
     setFriends(friendsRes.data ?? [])
     setPendingRequests(pendingCount)
+    setPendingMerges(mergeCount)
     setActiveGames(active)
     setFinishedGames(finished)
     setActiveOffset(PAGE_SIZE)
@@ -179,14 +183,17 @@ function HomePage() {
           </div>
         ) : (
           <>
-            {pendingRequests > 0 && (
+            {pendingRequests + pendingMerges > 0 && (
               <Link
                 to="/friends"
                 className="mb-6 bg-[#f5a623]/10 border border-[#f5a623]/40 rounded-xl p-3 flex items-center gap-3"
               >
                 <UserPlus size={18} className="text-[#f5a623] shrink-0" />
                 <span className="flex-1 min-w-0 text-white text-sm font-medium">
-                  {pendingRequests} arkadaşlık isteği bekliyor
+                  {[
+                    pendingRequests > 0 && `${pendingRequests} arkadaşlık isteği`,
+                    pendingMerges > 0 && `${pendingMerges} birleştirme onayı`,
+                  ].filter(Boolean).join(', ')} bekliyor
                 </span>
                 <ChevronRight size={16} className="text-[#f5a623] shrink-0" />
               </Link>

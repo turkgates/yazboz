@@ -29,6 +29,7 @@ function RootLayout() {
     pathname === '/' ||
     pathname === '/onboarding' ||
     pathname === '/new-game' ||
+    pathname.startsWith('/merge-request/') ||
     isResetPassword
 
   useEffect(() => {

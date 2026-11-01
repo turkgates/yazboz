@@ -6,7 +6,6 @@ import {
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  dispatchMergeModal,
   MERGE_OPEN_EVENT,
 } from '@/lib/notificationUtils'
 import type { AppNotification } from '@/types'
@@ -25,6 +24,10 @@ function getNotificationIcon(type: AppNotification['type']): string {
       return '✅'
     case 'merge_notify':
       return 'ℹ️'
+    case 'merge_approved':
+      return '✅'
+    case 'merge_rejected':
+      return '🚫'
     case 'friend_removed':
       return '💔'
     case 'group_joined':
@@ -126,18 +129,19 @@ export function NotificationBell() {
         navigate({ to: '/friends' })
         break
       case 'merge_request': {
-        const friendUserId =
-          (notification.data?.friend_user_id as string) ??
-          (notification.data?.requester_id as string)
-        if (friendUserId) dispatchMergeModal(friendUserId)
+        const requestId = notification.data?.request_id as string | undefined
         setShowPanel(false)
+        if (requestId) navigate({ to: '/merge-request/$requestId', params: { requestId } })
+        else navigate({ to: '/friends' })
         break
       }
       case 'merge_done':
         setShowPanel(false)
         navigate({ to: '/profile', search: { tab: 'stats' } })
         break
-      case 'friend_accepted': {
+      case 'friend_accepted':
+      case 'merge_approved':
+      case 'merge_rejected': {
         const friendId = notification.data?.friend_id as string | undefined
         setShowPanel(false)
         if (friendId) navigate({ to: '/friend/$friendId', params: { friendId } })
@@ -160,17 +164,6 @@ export function NotificationBell() {
       default:
         break
     }
-  }
-
-  const goToFriends = async (notification: AppNotification) => {
-    if (!notification.is_read) {
-      await markNotificationRead(notification.id)
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notification.id ? { ...n, is_read: true } : n))
-      )
-    }
-    setShowPanel(false)
-    navigate({ to: '/friends' })
   }
 
   return (
@@ -229,31 +222,6 @@ export function NotificationBell() {
                       !notification.is_read ? 'bg-[#0f3460]/30' : ''
                     }`}
                   >
-                    {isFriendRequest ? (
-                      <>
-                        <div className="flex gap-3">
-                          <span className="text-lg shrink-0">{getNotificationIcon(notification.type)}</span>
-                          <PlayerAvatar name={name} avatarUrl={avatarUrl} size={36} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm leading-snug">{notification.body}</p>
-                            <p className="text-[#718096] text-xs mt-1 italic">
-                              Arkadaşlar sayfasından yanıtlayabilirsiniz
-                            </p>
-                            <p className="text-[#718096] text-xs mt-1">
-                              {formatDistanceToNow(notification.created_at)}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => goToFriends(notification)}
-                          className="mt-2 ml-9 flex items-center gap-1 text-[#e94560] text-xs font-semibold"
-                        >
-                          → Arkadaşlar
-                          <ChevronRight size={14} />
-                        </button>
-                      </>
-                    ) : (
                       <button
                         type="button"
                         onClick={() => handleNotificationClick(notification)}
@@ -261,7 +229,8 @@ export function NotificationBell() {
                       >
                         <div className="flex gap-3">
                           <span className="text-lg shrink-0">{getNotificationIcon(notification.type)}</span>
-                          {(notification.type === 'friend_accepted' ||
+                          {(isFriendRequest ||
+                            notification.type === 'friend_accepted' ||
                             notification.type === 'merge_request') && (
                             <PlayerAvatar name={name} avatarUrl={avatarUrl} size={36} />
                           )}
@@ -272,13 +241,13 @@ export function NotificationBell() {
                             </p>
                           </div>
                         </div>
-                        {isMergeRequest && (
-                          <span className="mt-2 ml-9 inline-block text-[#e94560] text-xs font-semibold">
-                            Görüntüle
+                        {(isFriendRequest || isMergeRequest) && (
+                          <span className="mt-2 ml-9 flex items-center gap-1 text-[#e94560] text-xs font-semibold">
+                            {isFriendRequest ? 'Yanıtla' : 'İstatistikleri gör ve yanıtla'}
+                            <ChevronRight size={14} />
                           </span>
                         )}
                       </button>
-                    )}
                   </div>
                 )
               })

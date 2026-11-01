@@ -2,7 +2,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { Home, User, Users, BarChart2, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { countPendingRequests } from '@/lib/socialSupabase'
+import { countPendingMergeApprovals, countPendingRequests } from '@/lib/socialSupabase'
 import { PLAYERS_REFRESH_EVENT } from '@/lib/friendUtils'
 
 const NAV_ITEMS = [
@@ -20,8 +20,11 @@ export function BottomNavBar() {
   const refreshPendingCount = () => {
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
-        const count = await countPendingRequests(data.user.id)
-        setPendingCount(count)
+        const [requests, approvals] = await Promise.all([
+          countPendingRequests(data.user.id),
+          countPendingMergeApprovals(data.user.id),
+        ])
+        setPendingCount(requests + approvals)
       }
     })
   }
