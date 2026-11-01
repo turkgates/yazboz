@@ -244,7 +244,7 @@ export async function createGroup(name: string, ownerId: string): Promise<Group>
   throw lastError ?? new Error('Davet kodu oluşturulamadı, tekrar deneyin')
 }
 
-export async function joinGroupByCode(code: string, userId: string): Promise<Group> {
+export async function joinGroupByCode(code: string): Promise<Group> {
   const { data, error } = await supabase.rpc('join_group_by_invite_code', {
     p_code: code,
   })
@@ -254,11 +254,7 @@ export async function joinGroupByCode(code: string, userId: string): Promise<Gro
     throw new Error(error.message)
   }
 
-  const group = data as Group
-
-  await syncGroupMembersToPlayersList(group.id, userId)
-
-  return { ...group, myRole: 'member' }
+  return { ...(data as Group), myRole: 'member' }
 }
 
 export async function leaveGroup(groupId: string, userId: string) {
@@ -269,37 +265,6 @@ export async function leaveGroup(groupId: string, userId: string) {
     .eq('user_id', userId)
 }
 
-export async function syncGroupMembersToPlayersList(groupId: string, currentUserId: string) {
-  const { data: members } = await supabase
-    .from('group_members')
-    .select('user_id, profiles(display_name, avatar_url)')
-    .eq('group_id', groupId)
-    .neq('user_id', currentUserId)
-
-  if (!members) return
-
-  for (const member of members) {
-    const profile = (member as unknown as { profiles: { display_name: string; avatar_url: string } | null }).profiles
-    if (!profile?.display_name) continue
-
-    const { data: existing } = await supabase
-      .from('players')
-      .select('id')
-      .eq('user_id', currentUserId)
-      .eq('linked_user_id', member.user_id)
-      .maybeSingle()
-
-    if (!existing) {
-      await supabase.from('players').insert({
-        user_id: currentUserId,
-        name: profile.display_name,
-        avatar_url: profile.avatar_url ?? null,
-        linked_user_id: member.user_id,
-      } as Partial<SavedPlayer>)
-    }
-  }
-}
-
 export async function addGameToGroups(gameId: string, players: string[], currentUserId: string) {
   const { data: memberships } = await supabase
     .from('group_members')
@@ -308,26 +273,21 @@ export async function addGameToGroups(gameId: string, players: string[], current
   if (!memberships?.length) return
 
   for (const { group_id } of memberships) {
-    const { data: groupMembers } = await supabase
-      .from('group_members')
-      .select('user_id, profiles(display_name)')
-      .eq('group_id', group_id)
-
-    if (!groupMembers) continue
+    const { data: groupMembers } = await fetchGroupMembers(group_id)
     const groupNames = groupMembers
-      .map((m) => {
-        const p = (m as unknown as { profiles: { display_name: string } | null }).profiles
-        return p?.display_name?.toLowerCase()
-      })
+      .map((m) => m.profiles?.display_name?.toLowerCase())
       .filter(Boolean)
 
     const playingGroupMembers = players.filter((p) => groupNames.includes(p.toLowerCase()))
     if (playingGroupMembers.length >= 2) {
-      await supabase
+      const { error } = await supabase
         .from('group_games')
-        .upsert({ group_id, game_id: gameId })
-        .eq('group_id', group_id)
-        .eq('game_id', gameId)
+        .upsert(
+          { group_id, game_id: gameId },
+          { onConflict: 'group_id,game_id', ignoreDuplicates: true }
+        )
+
+      if (error) console.error('Grup oyunu ekleme hatası:', error)
     }
   }
 }
@@ -729,15 +689,19 @@ export async function fetchPlayerSuggestionsWithSocial(
 
   const groupsRes = await fetchMyGroups(userId)
   const groupMemberMap: Record<string, string> = {}
+  const groupMemberAvatars: Record<string, string | null> = {}
   for (const group of (groupsRes.data ?? [])) {
     const { data: members } = await fetchGroupMembers(group.id)
     for (const m of members ?? []) {
       const name = m.profiles?.display_name
-      if (name) groupMemberMap[name] = group.name
+      if (name) {
+        groupMemberMap[name] = group.name
+        groupMemberAvatars[name] = m.profiles?.avatar_url ?? null
+      }
     }
   }
 
-  return players.map((p) => ({
+  const suggestions: PlayerSuggestion[] = players.map((p) => ({
     id: p.id,
     name: p.name,
     avatarUrl: p.avatar_url,
@@ -747,4 +711,21 @@ export async function fetchPlayerSuggestionsWithSocial(
     isGroupMember: !!groupMemberMap[p.name],
     groupName: groupMemberMap[p.name],
   }))
+
+  // Oyuncu listesinde olmayan grup üyeleri de seçilebilsin: oyunun gruba
+  // bağlanması, oyuncu adlarının üyelerin görünen adıyla eşleşmesine bağlı.
+  const q = query.trim().toLowerCase()
+  const knownNames = new Set(players.map((p) => p.name.toLowerCase()))
+  for (const [name, groupName] of Object.entries(groupMemberMap)) {
+    if (name.toLowerCase().includes(q) && !knownNames.has(name.toLowerCase())) {
+      suggestions.push({
+        name,
+        avatarUrl: groupMemberAvatars[name],
+        isGroupMember: true,
+        groupName,
+      })
+    }
+  }
+
+  return suggestions
 }
