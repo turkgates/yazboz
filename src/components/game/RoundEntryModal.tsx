@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
 import { useSaveLock } from '@/hooks/useSaveLock'
 import type { Color, Game, Round, RoundInput, CezaliGameSettings } from '@/types'
-import { COLOR_LABELS, DEFAULT_SETTINGS } from '@/types'
+import { DEFAULT_SETTINGS } from '@/types'
 import { isCezaliSettings, teamLabel } from '@/lib/gameTypes'
 import type { PlayerRoundInput } from '@/lib/calculations'
 import {
@@ -12,6 +11,16 @@ import {
   inferRoundInputFromScores,
   previewRoundScore,
 } from '@/lib/calculations'
+import {
+  ColorPicker,
+  EntryRow,
+  EntrySection,
+  EntrySheet,
+  PointsInput,
+  SaveButton,
+  ToggleChip,
+  WinnerPicker,
+} from '@/components/game/RoundEntryParts'
 
 interface RoundEntryModalProps {
   game: Game
@@ -20,14 +29,6 @@ interface RoundEntryModalProps {
   teams?: string[][]
   onSave: (input: RoundInput) => Promise<boolean>
   onClose: () => void
-}
-
-const COLORS: Color[] = ['black', 'red', 'yellow', 'green']
-const COLOR_EMOJI: Record<Color, string> = {
-  black: '⬛',
-  red: '🔴',
-  yellow: '🟡',
-  green: '🟢',
 }
 
 type PlayerUIStatus = 'normal' | 'okey_burned' | 'winner'
@@ -59,7 +60,6 @@ export function RoundEntryModal({
   const [rawPoints, setRawPoints] = useState<Record<string, string>>({})
   const [winnerTeam, setWinnerTeam] = useState<string | null>(null)
   const [teamRawPoints, setTeamRawPoints] = useState<Record<string, string>>({})
-  const [saveError, setSaveError] = useState('')
 
   useEffect(() => {
     const initial: Record<string, PlayerUIStatus> = {}
@@ -129,23 +129,21 @@ export function RoundEntryModal({
     ? winnerTeam
     : game.players.find((p) => playerStatuses[p] === 'winner') ?? null
 
-  const currentMultiplier = fakeOkey
-    ? getFakeOkeyLoserMultiplier(okeyThrown, doubleFinish)
-    : color
-      ? getLoserMultiplier(color, okeyThrown, doubleFinish, settings.colorMultipliers)
-      : null
-
-  const handleFakeOkeyToggle = (checked: boolean) => {
-    setFakeOkey(checked)
-    if (checked) {
-      setOkeyThrown(false)
-      if (!color) setColor('black')
-    }
+  const handleColorSelect = (next: Color) => {
+    setColor(next)
+    setFakeOkey(false)
   }
 
-  const handleNoWinnerToggle = (checked: boolean) => {
-    setNoWinner(checked)
-    if (checked) {
+  const handleFakeOkeySelect = () => {
+    setFakeOkey(true)
+    setOkeyThrown(false)
+    if (!color) setColor('black')
+  }
+
+  const handleNoWinnerToggle = () => {
+    const next = !noWinner
+    setNoWinner(next)
+    if (next) {
       if (teamMode) {
         setWinnerTeam(null)
       } else {
@@ -158,19 +156,29 @@ export function RoundEntryModal({
     }
   }
 
-  const setPlayerStatus = (player: string, status: PlayerUIStatus) => {
-    if (noWinner && status !== 'normal') return
+  const handleWinnerSelect = (option: string) => {
+    setNoWinner(false)
+
+    if (teamMode) {
+      setWinnerTeam(winnerTeam === option ? null : option)
+      return
+    }
 
     setPlayerStatuses((prev) => {
       const next = { ...prev }
-      if (status === 'winner') {
-        for (const p of game.players) {
-          if (p !== player && next[p] === 'winner') next[p] = 'normal'
-        }
+      for (const p of game.players) {
+        if (next[p] === 'winner') next[p] = 'normal'
       }
-      next[player] = status
+      if (prev[option] !== 'winner') next[option] = 'winner'
       return next
     })
+  }
+
+  const toggleBurned = (player: string) => {
+    setPlayerStatuses((prev) => ({
+      ...prev,
+      [player]: prev[player] === 'okey_burned' ? 'normal' : 'okey_burned',
+    }))
   }
 
   const buildTeamInput = (label: string): PlayerRoundInput => {
@@ -229,21 +237,19 @@ export function RoundEntryModal({
     return previewRoundScore(input, effectiveColor, okeyThrown, doubleFinish, settings, fakeOkey)
   }
 
-  const showPreview = (fakeOkey || color) && (noWinner || winner)
+  const entities = teamMode ? teamLabels : game.players
+  const buildInput = teamMode ? buildTeamInput : buildPlayerInput
+
+  const missing = !noWinner && !winner
+    ? (teamMode ? 'Biten takımı seç' : 'Biten oyuncuyu seç')
+    : !fakeOkey && !color
+      ? 'Okey rengini seç'
+      : null
 
   const handleSave = () => {
-    if (!fakeOkey && !color) return
+    if (missing) return
 
-    if (!noWinner && !winner) {
-      setSaveError(teamMode ? "Biten takımı veya 'Kimse Bitmedi'yi seçin" : "Biten oyuncuyu veya 'Kimse Bitmedi'yi seçin")
-      return
-    }
-
-    setSaveError('')
-
-    const playerResults = teamMode
-      ? teamLabels.map(buildTeamInput)
-      : game.players.map(buildPlayerInput)
+    const playerResults = entities.map(buildInput)
 
     void runSave(() =>
       onSave({
@@ -258,305 +264,84 @@ export function RoundEntryModal({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      onClick={handleClose}
+    <EntrySheet
+      title={isEditing ? `${editingRound.round_number}. El · Düzenle` : `${roundNumber}. El`}
+      onClose={handleClose}
+      footer={<SaveButton saving={saving} missing={missing} onClick={handleSave} />}
     >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-lg bg-[#16213e] rounded-t-3xl border-t border-x border-[#2d3748] overflow-hidden safe-bottom max-h-[92dvh] flex flex-col"
-      >
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 rounded-full bg-[#4a5568]" />
-        </div>
+      <EntrySection title={teamMode ? 'Hangi takım bitti?' : 'Kim bitti?'}>
+        <WinnerPicker
+          options={entities}
+          selected={winner}
+          onSelect={handleWinnerSelect}
+          singleColumn={teamMode}
+          scores={winner ? { [winner]: getPreviewScore(buildInput(winner)) } : undefined}
+          noWinner={{ selected: noWinner, onSelect: handleNoWinnerToggle }}
+        />
+      </EntrySection>
 
-        <div className="px-5 pb-3 border-b border-[#2d3748] shrink-0">
-          <h3 className="text-white font-bold text-base">
-            {isEditing ? `El ${editingRound.round_number} Düzenle` : `El ${roundNumber}`}
-          </h3>
-        </div>
+      <EntrySection title="Okey rengi">
+        <ColorPicker
+          color={color}
+          fakeOkey={fakeOkey}
+          onColor={handleColorSelect}
+          onFakeOkey={handleFakeOkeySelect}
+          multipliers={settings.colorMultipliers}
+          fakeMultiplier={getFakeOkeyLoserMultiplier(false, false)}
+        />
+      </EntrySection>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider">
-                Okey Rengi
-              </p>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={fakeOkey}
-                  onChange={(e) => handleFakeOkeyToggle(e.target.checked)}
-                  className="accent-purple-500 w-4 h-4"
-                />
-                <span className="text-white text-sm">Sahte Okey</span>
-              </label>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  disabled={fakeOkey}
-                  onClick={() => setColor(c)}
-                  className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-all ${
-                    fakeOkey
-                      ? 'opacity-40 cursor-not-allowed border-[#2d3748] bg-[#0f3460]/20'
-                      : color === c
-                        ? 'border-[#e94560] bg-[#e94560]/10'
-                        : 'border-[#2d3748] bg-[#0f3460]/30'
-                  }`}
-                >
-                  <span className="text-2xl">{COLOR_EMOJI[c]}</span>
-                  <span className="text-white text-xs font-medium">{COLOR_LABELS[c]}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {!noWinner && (
-            <section>
-              <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-                Özel Durum {winner ? `(Biten ${teamMode ? 'takım' : 'oyuncu'})` : ''}
-              </p>
-              <div className="flex gap-3 mb-2">
-                <label
-                  className={`flex-1 flex items-center gap-2 bg-[#0f3460]/40 border border-[#2d3748] rounded-xl p-3 ${
-                    winner && !fakeOkey ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={okeyThrown}
-                    disabled={!winner || fakeOkey}
-                    onChange={(e) => setOkeyThrown(e.target.checked)}
-                    className="accent-[#e94560] w-4 h-4"
-                  />
-                  <span className="text-white text-sm">Okey Atıldı</span>
-                </label>
-                <label
-                  className={`flex-1 flex items-center gap-2 bg-[#0f3460]/40 border border-[#2d3748] rounded-xl p-3 ${
-                    winner ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={doubleFinish}
-                    disabled={!winner}
-                    onChange={(e) => setDoubleFinish(e.target.checked)}
-                    className="accent-[#e94560] w-4 h-4"
-                  />
-                  <span className="text-white text-sm">Çiftten Bitti</span>
-                </label>
-              </div>
-              <p className="text-center text-[#a0aec0] text-sm">
-                {fakeOkey ? (
-                  <>
-                    Sahte Okey:{' '}
-                    <span className="text-purple-400 font-bold">×{currentMultiplier}</span>
-                  </>
-                ) : (
-                  <>
-                    Mevcut çarpan:{' '}
-                    <span className="text-white font-bold">
-                      {color ? `×${currentMultiplier}` : 'Renk seçin'}
-                    </span>
-                  </>
-                )}
-              </p>
-            </section>
-          )}
-
-          <section>
-            <label className="flex items-center gap-3 bg-[#0f3460]/40 border border-[#2d3748] rounded-xl p-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={noWinner}
-                onChange={(e) => handleNoWinnerToggle(e.target.checked)}
-                className="accent-[#e94560] w-4 h-4"
+      {winner && (
+        <EntrySection title="Nasıl bitti?">
+          <div className="flex gap-2">
+            {!fakeOkey && (
+              <ToggleChip
+                label="Okey attı"
+                active={okeyThrown}
+                onClick={() => setOkeyThrown(!okeyThrown)}
               />
-              <span className="text-white text-sm font-medium">Kimse Bitmedi</span>
-            </label>
-          </section>
-
-          <section>
-            <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-              {teamMode ? 'Takım Durumları' : 'Oyuncu Durumları'}
-            </p>
-            <div className="flex flex-col gap-3">
-              {teamMode
-                ? teamLabels.map((label, i) => {
-                    const isWinner = winnerTeam === label
-                    return (
-                      <div
-                        key={label}
-                        className={`bg-[#0f3460]/40 border rounded-xl p-3 ${
-                          isWinner ? 'border-green-500/50' : 'border-[#2d3748]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">
-                            Takım {i + 1} ({label})
-                          </span>
-                          <button
-                            type="button"
-                            disabled={noWinner}
-                            onClick={() =>
-                              setWinnerTeam(winnerTeam === label ? null : label)
-                            }
-                            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                              isWinner
-                                ? 'bg-green-500 text-white'
-                                : 'bg-[#2d3748] text-[#a0aec0] hover:text-white'
-                            } ${noWinner ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          >
-                            Bitti
-                          </button>
-                        </div>
-                        {!isWinner && (
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="Takımın toplam cezası"
-                            value={teamRawPoints[label] ?? ''}
-                            onChange={(e) =>
-                              setTeamRawPoints((p) => ({ ...p, [label]: e.target.value }))
-                            }
-                            className="w-full bg-[#1a1a2e] border border-[#2d3748] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-[#e94560]"
-                          />
-                        )}
-                      </div>
-                    )
-                  })
-                : game.players.map((player) => {
-                    const status = playerStatuses[player] ?? 'normal'
-                    const isWinner = status === 'winner'
-                    const isBurned = status === 'okey_burned'
-
-                    return (
-                      <div
-                        key={player}
-                        className={`bg-[#0f3460]/40 border rounded-xl p-3 ${
-                          isWinner ? 'border-green-500/50' : isBurned ? 'border-orange-500/50' : 'border-[#2d3748]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">
-                            {player}
-                          </span>
-                          <div className="flex gap-1 shrink-0">
-                            {(['normal', 'okey_burned', 'winner'] as const).map((s) => {
-                              const labels = { normal: 'Normal', okey_burned: 'Okeyi Yaktı', winner: 'Bitti' }
-                              const disabled = noWinner && s !== 'normal'
-                              return (
-                                <button
-                                  key={s}
-                                  type="button"
-                                  disabled={disabled}
-                                  onClick={() => setPlayerStatus(player, s)}
-                                  className={`px-2 py-1 rounded-full text-[10px] font-semibold transition-colors ${
-                                    status === s
-                                      ? s === 'winner'
-                                        ? 'bg-green-500 text-white'
-                                        : s === 'okey_burned'
-                                          ? 'bg-orange-500 text-white'
-                                          : 'bg-[#e94560] text-white'
-                                      : 'bg-[#2d3748] text-[#a0aec0]'
-                                  } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
-                                >
-                                  {labels[s]}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-
-                        {status === 'normal' && (
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="Elindeki puan"
-                            value={rawPoints[player] ?? ''}
-                            onChange={(e) =>
-                              setRawPoints((p) => ({ ...p, [player]: e.target.value }))
-                            }
-                            className="w-full bg-[#1a1a2e] border border-[#2d3748] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-[#e94560]"
-                          />
-                        )}
-
-                        {isBurned && (
-                          <p className="text-orange-400 text-xs font-medium mt-1">Okeyi Yaktı</p>
-                        )}
-                      </div>
-                    )
-                  })}
-            </div>
-            {!noWinner && (
-              <p className="text-[#718096] text-xs mt-2">
-                Sadece 1 {teamMode ? 'takım' : 'kişi'} bitti seçilebilir.
-              </p>
             )}
-          </section>
+            <ToggleChip
+              label="Çiftten bitti"
+              active={doubleFinish}
+              onClick={() => setDoubleFinish(!doubleFinish)}
+            />
+          </div>
+        </EntrySection>
+      )}
 
-          {showPreview && (
-            <section className="bg-[#0f3460]/30 border border-[#2d3748] rounded-xl p-4">
-              <p className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3">
-                Önizleme
-              </p>
-              <div className="flex flex-col gap-2">
-                {(teamMode ? teamLabels : game.players).map((name) => {
-                  const input = teamMode ? buildTeamInput(name) : buildPlayerInput(name)
-                  const score = getPreviewScore(input)
-                  if (score === null) return null
-                  const displayName = teamMode ? `${name}` : name
-                  return (
-                    <div key={name} className="flex justify-between text-sm">
-                      <span className="text-white truncate mr-2">
-                        {teamMode ? `Takım (${displayName})` : displayName}
-                      </span>
-                      <span
-                        className={`font-bold shrink-0 ${score < 0 ? 'text-green-400' : score > 0 ? 'text-red-400' : 'text-[#718096]'}`}
-                      >
-                        {score > 0 ? `+${score}` : score}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          )}
-        </div>
+      {(winner || noWinner) && (
+        <EntrySection title={teamMode ? 'Takım cezaları' : 'Elindeki puanlar'}>
+          <div className="flex flex-col gap-1.5">
+            {entities.filter((name) => name !== winner).map((name) => {
+              const isBurned = !teamMode && playerStatuses[name] === 'okey_burned'
+              const points = teamMode ? teamRawPoints : rawPoints
+              const setPoints = teamMode ? setTeamRawPoints : setRawPoints
 
-        {saveError && (
-          <p className="px-5 text-red-400 text-sm text-center">{saveError}</p>
-        )}
-
-        <div className="px-5 pb-5 flex gap-3 shrink-0 border-t border-[#2d3748] pt-4">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3.5 rounded-xl"
-          >
-            İptal
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || (!fakeOkey && !color)}
-            className="flex-[2] bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-colors"
-          >
-            {saving ? 'Kaydediliyor...' : 'Kaydet'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
+              return (
+                <EntryRow key={name} name={name} score={getPreviewScore(buildInput(name))}>
+                  {!teamMode && !noWinner && (
+                    <ToggleChip
+                      size="sm"
+                      tone="orange"
+                      label="🔥 Yaktı"
+                      active={isBurned}
+                      onClick={() => toggleBurned(name)}
+                    />
+                  )}
+                  {!isBurned && (
+                    <PointsInput
+                      label={`${name} puanı`}
+                      value={points[name] ?? ''}
+                      onChange={(value) => setPoints((p) => ({ ...p, [name]: value }))}
+                    />
+                  )}
+                </EntryRow>
+              )
+            })}
+          </div>
+        </EntrySection>
+      )}
+    </EntrySheet>
   )
 }

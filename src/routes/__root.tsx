@@ -28,6 +28,7 @@ function RootLayout() {
     pathname === '/auth' ||
     pathname === '/' ||
     pathname === '/onboarding' ||
+    pathname === '/new-game' ||
     isResetPassword
 
   useEffect(() => {
