@@ -2,7 +2,8 @@ import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import confetti from 'canvas-confetti'
-import { supabase, fetchGameWithRounds, createGame, fetchPlayers } from '@/lib/supabase'
+import { fetchPlayers, getSessionUser, getLocalSession } from '@/lib/supabase'
+import { loadGameWithRounds, syncCreateGame } from '@/lib/gameSync'
 import { addGameToGroups } from '@/lib/socialSupabase'
 import { useGameStore, useSettingsStore } from '@/stores/gameStore'
 import {
@@ -29,7 +30,7 @@ import { TeamAvatars } from '@/components/TeamAvatars'
 
 export const Route = createFileRoute('/game-over/$gameId')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: GameOverPage,
@@ -55,7 +56,7 @@ function GameOverPage() {
 
   useEffect(() => {
     if (!currentGame || currentGame.id !== gameId) {
-      fetchGameWithRounds(gameId).then(({ game, rounds: r }) => {
+      loadGameWithRounds(gameId).then(({ game, rounds: r }) => {
         if (game) loadGame(game, r)
         setLoading(false)
       })
@@ -63,8 +64,8 @@ function GameOverPage() {
       setLoading(false)
     }
 
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return
+    getSessionUser().then(async ({ data }) => {
+      if (!data.user || !navigator.onLine) return
       const { data: players } = await fetchPlayers(data.user.id)
       setSavedPlayers(players ?? [])
       // Save game to any groups where ≥2 members are playing
@@ -78,7 +79,7 @@ function GameOverPage() {
 
   const handleReplay = async () => {
     if (!currentGame) return
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
 
     const newGameId = uuidv4()
@@ -100,7 +101,7 @@ function GameOverPage() {
     }
 
     startGame(newGame)
-    try { await createGame({ ...newGame, finished_at: null }) } catch {}
+    await syncCreateGame({ ...newGame, finished_at: null })
     navigate({ to: '/game/$gameId', params: { gameId: newGameId } })
   }
 

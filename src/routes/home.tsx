@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect, Link } from '@tanstack/react-router'
 import { useEffect, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchGamesPaginated, signOut } from '@/lib/supabase'
+import { fetchGamesPaginated, signOut, getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
   countPendingMergeApprovals,
   countPendingRequests,
@@ -12,7 +12,9 @@ import {
   type GroupSummary,
 } from '@/lib/socialSupabase'
 import type { Friend, Game } from '@/types'
-import { Plus, LogOut, ChevronRight, Trophy, Clock, Dices, UserPlus, Users } from 'lucide-react'
+import { Plus, LogOut, ChevronRight, Trophy, Clock, Dices, Radio, UserPlus, Users } from 'lucide-react'
+import { fetchMyLiveTables, PENDING_TABLE_KEY } from '@/lib/liveTable'
+import { markNetworkDown, mergeLocalGames, withReadTimeout } from '@/lib/gameSync'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 import { GameResultModal } from '@/components/GameResultModal'
 import { getGameTypeLabel } from '@/lib/gameTypes'
@@ -22,6 +24,7 @@ import { PlayerAvatar } from '@/components/PlayerAvatar'
 const PAGE_SIZE = 5
 const HOME_GROUP_LIMIT = 3
 const HOME_AVATAR_LIMIT = 4
+const DISPLAY_NAME_KEY = 'yazboz-display-name'
 
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -33,7 +36,7 @@ function getGreeting(): string {
 
 export const Route = createFileRoute('/home')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) {
       throw redirect({ to: '/auth' })
     }
@@ -59,6 +62,8 @@ function HomePage() {
   const [friends, setFriends] = useState<Friend[]>([])
   const [pendingRequests, setPendingRequests] = useState(0)
   const [pendingMerges, setPendingMerges] = useState(0)
+  const [offline, setOffline] = useState(!navigator.onLine)
+  const [liveTables, setLiveTables] = useState<Game[]>([])
 
   useEffect(() => {
     const inviteCode = sessionStorage.getItem(PENDING_INVITE_KEY)
@@ -67,29 +72,74 @@ function HomePage() {
       navigate({ to: '/join-group', search: { code: inviteCode }, replace: true })
       return
     }
+    const tableCode = sessionStorage.getItem(PENDING_TABLE_KEY)
+    if (tableCode) {
+      sessionStorage.removeItem(PENDING_TABLE_KEY)
+      navigate({ to: '/join-table', search: { code: tableCode }, replace: true })
+      return
+    }
     loadData()
+
+    const reload = () => loadData()
+    window.addEventListener('online', reload)
+    return () => window.removeEventListener('online', reload)
   }, [])
 
   const loadData = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
     setUserId(user.id)
 
-    const profileRes = await fetchUserProfile(user.id)
-    setDisplayName(profileRes.data?.display_name ?? user.email?.split('@')[0] ?? '')
+    const showLocal = () => {
+      setOffline(true)
+      setDisplayName(localStorage.getItem(DISPLAY_NAME_KEY) ?? user.email?.split('@')[0] ?? '')
+      setActiveGames(mergeLocalGames(user.id, 'active', []))
+      setFinishedGames(mergeLocalGames(user.id, 'finished', []))
+      setHasMoreActive(false)
+      setHasMoreFinished(false)
+      setLoading(false)
+    }
 
-    const [activeRes, finishedRes, groupList, friendsRes, pendingCount, mergeCount] = await Promise.all([
-      fetchGamesPaginated(user.id, 'active', 0, PAGE_SIZE),
-      fetchGamesPaginated(user.id, 'finished', 0, PAGE_SIZE),
+    // İnternet yokken yalnızca telefonda duran oyunlar gösterilir
+    if (!navigator.onLine) {
+      showLocal()
+      return
+    }
+
+    const gamesResult = await withReadTimeout(
+      Promise.all([
+        fetchUserProfile(user.id),
+        fetchGamesPaginated(user.id, 'active', 0, PAGE_SIZE),
+        fetchGamesPaginated(user.id, 'finished', 0, PAGE_SIZE),
+      ])
+    )
+
+    if (!gamesResult || gamesResult[1].status === 0) {
+      markNetworkDown(true)
+      showLocal()
+      return
+    }
+
+    markNetworkDown(false)
+    setOffline(false)
+
+    const [profileRes, activeRes, finishedRes] = gamesResult
+    const name = profileRes.data?.display_name ?? user.email?.split('@')[0] ?? ''
+    setDisplayName(name)
+    if (profileRes.data?.display_name) localStorage.setItem(DISPLAY_NAME_KEY, name)
+
+    const [groupList, friendsRes, pendingCount, mergeCount, tables] = await Promise.all([
       fetchMyGroupSummaries(user.id),
       fetchFriends(user.id),
       countPendingRequests(user.id),
       countPendingMergeApprovals(user.id),
+      fetchMyLiveTables(user.id),
     ])
 
-    const active = activeRes.data ?? []
-    const finished = finishedRes.data ?? []
+    const active = mergeLocalGames(user.id, 'active', activeRes.data ?? [])
+    const finished = mergeLocalGames(user.id, 'finished', finishedRes.data ?? [])
 
+    setLiveTables(tables)
     setGroups(groupList)
     setFriends(friendsRes.data ?? [])
     setPendingRequests(pendingCount)
@@ -98,8 +148,8 @@ function HomePage() {
     setFinishedGames(finished)
     setActiveOffset(PAGE_SIZE)
     setFinishedOffset(PAGE_SIZE)
-    setHasMoreActive(active.length === PAGE_SIZE)
-    setHasMoreFinished(finished.length === PAGE_SIZE)
+    setHasMoreActive((activeRes.data ?? []).length === PAGE_SIZE)
+    setHasMoreFinished((finishedRes.data ?? []).length === PAGE_SIZE)
     setLoading(false)
   }
 
@@ -157,30 +207,38 @@ function HomePage() {
       </div>
 
       <div className="flex-1 px-4 py-6 max-w-lg mx-auto w-full pb-20">
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-3 gap-2 mb-6">
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => navigate({ to: '/new-game' })}
-            className="col-span-2 bg-[#e94560] hover:bg-[#c73652] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 text-lg shadow-lg shadow-[#e94560]/20 transition-colors"
+            className="col-span-3 mb-1 bg-[#e94560] hover:bg-[#c73652] text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-3 text-lg shadow-lg shadow-[#e94560]/20 transition-colors"
           >
             <Plus size={24} />
             Yeni Oyun Başlat
           </motion.button>
 
           <Link
-            to="/tracker"
-            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-14 flex items-center justify-center gap-2 transition-colors"
+            to="/join-table"
+            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-[72px] flex flex-col items-center justify-center gap-1 transition-colors"
           >
-            <span className="text-xl">🀄</span>
-            <span className="text-white text-sm font-semibold">Oyun Takip</span>
+            <Radio size={20} className="text-green-400" />
+            <span className="text-white text-xs font-semibold">Masaya Katıl</span>
+          </Link>
+
+          <Link
+            to="/tracker"
+            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-[72px] flex flex-col items-center justify-center gap-1 transition-colors"
+          >
+            <span className="text-lg leading-5">🀄</span>
+            <span className="text-white text-xs font-semibold">Oyun Takip</span>
           </Link>
 
           <Link
             to="/dice"
-            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-14 flex items-center justify-center gap-2 transition-colors"
+            className="bg-[#16213e] border border-[#2d3748] hover:border-[#e94560]/40 rounded-2xl h-[72px] flex flex-col items-center justify-center gap-1 transition-colors"
           >
             <Dices size={20} className="text-[#e94560]" />
-            <span className="text-white text-sm font-semibold">Zar At</span>
+            <span className="text-white text-xs font-semibold">Zar At</span>
           </Link>
         </div>
 
@@ -204,6 +262,32 @@ function HomePage() {
                 </span>
                 <ChevronRight size={16} className="text-[#f5a623] shrink-0" />
               </Link>
+            )}
+
+            {!offline && liveTables.length > 0 && (
+              <section className="mb-6">
+                <h2 className="text-[#a0aec0] text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Radio size={14} />
+                  Katıldığın Masalar
+                </h2>
+                <div className="flex flex-col gap-2">
+                  {liveTables.map((game) => (
+                    <Link
+                      key={game.id}
+                      to="/live/$gameId"
+                      params={{ gameId: game.id }}
+                      className="bg-[#16213e] border border-green-500/40 rounded-xl p-4 flex items-center gap-2"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-white text-sm font-medium truncate">{game.players.join(', ')}</span>
+                        <span className="block text-[#718096] text-xs">Canlı izle</span>
+                      </span>
+                      <ChevronRight size={16} className="text-[#718096] shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </section>
             )}
 
             {activeGames.length > 0 && (
@@ -237,8 +321,12 @@ function HomePage() {
               </section>
             )}
 
-            <GroupsSection groups={groups} />
-            <FriendsSection friends={friends} />
+            {!offline && (
+              <>
+                <GroupsSection groups={groups} />
+                <FriendsSection friends={friends} />
+              </>
+            )}
 
             {finishedGames.length > 0 && (
               <section>

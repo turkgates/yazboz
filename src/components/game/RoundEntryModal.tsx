@@ -83,6 +83,34 @@ export function RoundEntryModal({
   useEffect(() => {
     if (!editingRound) return
 
+    const details = editingRound.details?.kind === 'cezali' ? editingRound.details : null
+
+    if (details) {
+      setColor(editingRound.color)
+      setFakeOkey(editingRound.fake_okey ?? false)
+      setOkeyThrown(editingRound.okey_thrown)
+      setDoubleFinish(editingRound.double_finish)
+      setNoWinner(details.no_winner)
+
+      const raw: Record<string, string> = {}
+      const statuses: Record<string, PlayerUIStatus> = {}
+      for (const name of teamMode ? teamLabels : game.players) {
+        const entry = details.players[name]
+        raw[name] = entry?.raw ? String(entry.raw) : ''
+        statuses[name] =
+          entry?.status === 'winner' || entry?.status === 'okey_burned' ? entry.status : 'normal'
+      }
+
+      if (teamMode) {
+        setTeamRawPoints(raw)
+        setWinnerTeam(teamLabels.find((label) => details.players[label]?.status === 'winner') ?? null)
+      } else {
+        setPlayerStatuses(statuses)
+        setRawPoints(raw)
+      }
+      return
+    }
+
     if (teamMode) {
       setColor(editingRound.color)
       setFakeOkey(editingRound.fake_okey ?? false)

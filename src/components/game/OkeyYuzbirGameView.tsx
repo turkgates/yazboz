@@ -3,7 +3,9 @@ import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Trophy } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import { supabase, fetchGameWithRounds, fetchPlayers, insertRound, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, updateGame } from '@/lib/supabase'
+import { fetchPlayers, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, getSessionUser } from '@/lib/supabase'
+import { loadGameWithRounds, syncInsertRound, syncUpdateGame } from '@/lib/gameSync'
+import { build101Details } from '@/lib/roundDetails'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import { getTeams, isEsliGame, teamLabel } from '@/lib/gameTypes'
@@ -35,7 +37,7 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
   const [showEndConfirm, setShowEndConfirm] = useState(false)
 
   const refetchGame = async () => {
-    const { game: g, rounds: r } = await fetchGameWithRounds(gameId)
+    const { game: g, rounds: r } = await loadGameWithRounds(gameId)
     if (g) {
       setGame(g)
       setRounds(r)
@@ -45,8 +47,8 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
 
   useEffect(() => {
     refetchGame()
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
+    getSessionUser().then(async ({ data }) => {
+      if (data.user && navigator.onLine) {
         const { data: pData } = await fetchPlayers(data.user.id)
         if (pData) setPlayers(pData)
       }
@@ -110,8 +112,9 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
         okey_thrown: false,
         double_finish: false,
         scores,
+        details: build101Details(input.playerInputs, katlamali ? input.maxOpenScore : undefined),
       }
-      const { data, error } = await insertRound(newRound)
+      const { data, error } = await syncInsertRound(newRound)
 
       if (error) {
         console.error('Round kayıt hatası:', error)
@@ -141,7 +144,7 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
     setGame(finished)
     finishGame()
     setShowEndConfirm(false)
-    await updateGame(gameId, { status: 'finished', finished_at: finished.finished_at })
+    await syncUpdateGame(gameId, { status: 'finished', finished_at: finished.finished_at })
     navigate({ to: '/game-over/$gameId', params: { gameId } })
   }
 

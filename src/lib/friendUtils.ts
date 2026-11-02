@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, getSessionUser } from '@/lib/supabase'
 import {
   sendFriendRequest as rpcSendFriendRequest,
   respondToFriendRequest,
@@ -13,7 +13,7 @@ export function dispatchPlayersRefresh() {
 }
 
 async function getCurrentUserId() {
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getSessionUser()
   if (!user) throw new Error('Oturum bulunamadı')
   return user.id
 }

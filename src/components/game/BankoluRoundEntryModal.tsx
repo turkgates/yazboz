@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSaveLock } from '@/hooks/useSaveLock'
+import { buildBankoluDetails, type BankoluRoundDetails } from '@/lib/roundDetails'
 import type { Color, Game } from '@/types'
 import { getTeams, isBankoluEsli, teamLabel } from '@/lib/gameTypes'
 import { playerIsBanko } from '@/lib/bankoluUtils'
@@ -27,6 +28,7 @@ export interface BankoluRoundSavePayload {
   doubleFinish: boolean
   scores: Record<string, number>
   bankoPlayers: string[]
+  details: BankoluRoundDetails
 }
 
 interface Props {
@@ -160,6 +162,7 @@ export function BankoluRoundEntryModal({
         doubleFinish,
         scores,
         bankoPlayers: currentBankos,
+        details: buildBankoluDetails(input.players),
       })
     )
   }

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, fetchPlayers } from '@/lib/supabase'
+import { supabase, fetchPlayers, getSessionUser, getLocalSession } from '@/lib/supabase'
 import { fetchMyStatsGames, fetchUserProfile } from '@/lib/socialSupabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import {
@@ -28,7 +28,7 @@ import { groupRoundsByGame } from '@/lib/statsUtils'
 
 export const Route = createFileRoute('/stats')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: StatsPage,
@@ -54,7 +54,7 @@ function StatsPage() {
   }, [])
 
   const loadStats = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
     setUserId(user.id)
 

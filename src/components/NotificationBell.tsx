@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Bell, X, ChevronRight } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { supabase, getSessionUser } from '@/lib/supabase'
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -38,6 +38,10 @@ function getNotificationIcon(type: AppNotification['type']): string {
       return '🚫'
     case 'group_deleted':
       return '🗑️'
+    case 'live_invite':
+      return '📡'
+    case 'live_finished':
+      return '🏁'
     default:
       return '🔔'
   }
@@ -65,7 +69,7 @@ export function NotificationBell() {
   const unreadCount = notifications.filter((n) => !n.is_read).length
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    getSessionUser().then(({ data: { user } }) => {
       if (user) setUserId(user.id)
     })
   }, [])
@@ -161,6 +165,18 @@ export function NotificationBell() {
         setShowPanel(false)
         navigate({ to: '/groups' })
         break
+      case 'live_invite': {
+        const code = notification.data?.live_code as string | undefined
+        setShowPanel(false)
+        navigate({ to: '/join-table', search: { code } })
+        break
+      }
+      case 'live_finished': {
+        const gameId = notification.data?.game_id as string | undefined
+        setShowPanel(false)
+        if (gameId) navigate({ to: '/live/$gameId', params: { gameId } })
+        break
+      }
       default:
         break
     }

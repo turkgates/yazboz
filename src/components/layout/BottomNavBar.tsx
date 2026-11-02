@@ -1,7 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Home, User, Users, BarChart2, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/supabase'
 import { countPendingMergeApprovals, countPendingRequests } from '@/lib/socialSupabase'
 import { PLAYERS_REFRESH_EVENT } from '@/lib/friendUtils'
 
@@ -18,7 +18,7 @@ export function BottomNavBar() {
   const [pendingCount, setPendingCount] = useState(0)
 
   const refreshPendingCount = () => {
-    supabase.auth.getUser().then(async ({ data }) => {
+    getSessionUser().then(async ({ data }) => {
       if (data.user) {
         const [requests, approvals] = await Promise.all([
           countPendingRequests(data.user.id),

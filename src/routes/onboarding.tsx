@@ -1,14 +1,14 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, uploadAvatar } from '@/lib/supabase'
+import { uploadAvatar, getSessionUser, getLocalSession } from '@/lib/supabase'
 import { checkUsernameAvailable, upsertProfile } from '@/lib/socialSupabase'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { ArrowRight, Check, X, Camera } from 'lucide-react'
 
 export const Route = createFileRoute('/onboarding')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: OnboardingPage,
@@ -31,7 +31,7 @@ function OnboardingPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    getSessionUser().then(({ data }) => {
       if (data.user) setUserId(data.user.id)
     })
   }, [])

@@ -8,7 +8,7 @@
 import { createFileRoute, Link, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { supabase, deletePlayer } from '@/lib/supabase'
+import { supabase, deletePlayer, getSessionUser, getLocalSession } from '@/lib/supabase'
 import { PLAYERS_REFRESH_EVENT } from '@/lib/friendUtils'
 import type { SavedPlayer } from '@/types'
 import { ChevronRight, Plus, Pencil, Trash2 } from 'lucide-react'
@@ -18,7 +18,7 @@ import { PlayerFormModal } from '@/components/players/PlayerFormModal'
 
 export const Route = createFileRoute('/players')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: PlayersPage,
@@ -36,7 +36,7 @@ function PlayersPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const loadPlayers = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
     setUserId(user.id)
 

@@ -1,9 +1,10 @@
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser, supabase } from '@/lib/supabase'
 import { ensureSelfInPlayers, checkPendingMergeRequest } from '@/lib/socialSupabase'
 import type { User } from '@supabase/supabase-js'
 import { BottomNavBar } from '@/components/layout/BottomNavBar'
+import { SyncBanner } from '@/components/layout/SyncBanner'
 import { PendingMergeModal, MergeRequestModal } from '@/components/MergeRequestModal'
 import { MERGE_OPEN_EVENT } from '@/lib/notificationUtils'
 
@@ -25,6 +26,7 @@ function RootLayout() {
   const isResetPassword = pathname === '/reset-password'
   const hideBottomNav =
     pathname.startsWith('/game/') ||
+    pathname.startsWith('/live/') ||
     pathname === '/auth' ||
     pathname === '/' ||
     pathname === '/onboarding' ||
@@ -33,13 +35,14 @@ function RootLayout() {
     isResetPassword
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null)
+    getSessionUser().then(({ data }) => {
+      setUser(data.user)
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Çevrimdışıyken yenilenemeyen oturum çıkış sayılmaz
+      if (session || event === 'SIGNED_OUT') setUser(session?.user ?? null)
     })
 
     return () => subscription.unsubscribe()
@@ -92,6 +95,7 @@ function RootLayout() {
 
   return (
     <>
+      <SyncBanner />
       <Outlet />
       {!hideBottomNav && <BottomNavBar />}
       {mergeUserId && !isResetPassword && (

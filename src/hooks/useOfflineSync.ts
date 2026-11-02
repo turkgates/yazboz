@@ -1,62 +1,40 @@
-import { useEffect, useRef } from 'react'
-import { useGameStore } from '@/stores/gameStore'
-import { supabase, createGame, insertRound } from '@/lib/supabase'
+import { useEffect, useState } from 'react'
+import { flushQueue } from '@/lib/gameSync'
 
-export function useOfflineSync() {
-  const { currentGame, rounds, pendingSync, setPendingSync } = useGameStore()
-  const syncingRef = useRef(false)
+const RETRY_INTERVAL_MS = 20000
+
+export function useOnlineStatus() {
+  const [online, setOnline] = useState(navigator.onLine)
 
   useEffect(() => {
-    const handleOnline = () => {
-      if (pendingSync && !syncingRef.current) {
-        syncToSupabase()
-      }
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
+
+  return online
+}
+
+// Bağlantı dönünce, uygulama öne gelince ve belirli aralıklarla bekleyen kayıtları gönderir
+export function useOfflineSync() {
+  useEffect(() => {
+    const kick = () => {
+      if (document.visibilityState === 'visible') void flushQueue()
     }
 
-    window.addEventListener('online', handleOnline)
-    return () => window.removeEventListener('online', handleOnline)
-  }, [pendingSync, currentGame, rounds])
+    kick()
+    window.addEventListener('online', kick)
+    document.addEventListener('visibilitychange', kick)
+    const timer = setInterval(kick, RETRY_INTERVAL_MS)
 
-  const syncToSupabase = async () => {
-    if (!currentGame || syncingRef.current) return
-    syncingRef.current = true
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      await createGame({
-        id: currentGame.id,
-        user_id: user.id,
-        game_type: currentGame.game_type,
-        status: currentGame.status,
-        total_rounds: currentGame.total_rounds,
-        players: currentGame.players,
-        settings: currentGame.settings,
-        finished_at: currentGame.finished_at ?? null,
-      })
-
-      for (const round of rounds) {
-        const { error } = await insertRound({
-          id: round.id,
-          game_id: round.game_id,
-          round_number: round.round_number,
-          color: round.color,
-          okey_thrown: round.okey_thrown,
-          double_finish: round.double_finish,
-          fake_okey: round.fake_okey ?? false,
-          scores: round.scores,
-        })
-        if (error) throw error
-      }
-
-      setPendingSync(false)
-    } catch (err) {
-      console.error('Sync failed:', err)
-    } finally {
-      syncingRef.current = false
+    return () => {
+      window.removeEventListener('online', kick)
+      document.removeEventListener('visibilitychange', kick)
+      clearInterval(timer)
     }
-  }
-
-  return { isOnline: navigator.onLine, pendingSync }
+  }, [])
 }

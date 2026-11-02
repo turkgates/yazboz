@@ -17,6 +17,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PlayersRouteImport } from './routes/players'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NewGameRouteImport } from './routes/new-game'
+import { Route as JoinTableRouteImport } from './routes/join-table'
 import { Route as JoinGroupRouteImport } from './routes/join-group'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as GroupsRouteImport } from './routes/groups'
@@ -26,6 +27,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayerPlayerIdRouteImport } from './routes/player.$playerId'
 import { Route as MergeRequestRequestIdRouteImport } from './routes/merge-request.$requestId'
+import { Route as LiveGameIdRouteImport } from './routes/live.$gameId'
 import { Route as GroupGroupIdRouteImport } from './routes/group.$groupId'
 import { Route as GameGameIdRouteImport } from './routes/game.$gameId'
 import { Route as GameOverGameIdRouteImport } from './routes/game-over.$gameId'
@@ -69,6 +71,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const NewGameRoute = NewGameRouteImport.update({
   id: '/new-game',
   path: '/new-game',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinTableRoute = JoinTableRouteImport.update({
+  id: '/join-table',
+  path: '/join-table',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinGroupRoute = JoinGroupRouteImport.update({
@@ -116,6 +123,11 @@ const MergeRequestRequestIdRoute = MergeRequestRequestIdRouteImport.update({
   path: '/merge-request/$requestId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LiveGameIdRoute = LiveGameIdRouteImport.update({
+  id: '/live/$gameId',
+  path: '/live/$gameId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupGroupIdRoute = GroupGroupIdRouteImport.update({
   id: '/group/$groupId',
   path: '/group/$groupId',
@@ -145,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
   '/join-group': typeof JoinGroupRoute
+  '/join-table': typeof JoinTableRoute
   '/new-game': typeof NewGameRoute
   '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
@@ -157,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
+  '/live/$gameId': typeof LiveGameIdRoute
   '/merge-request/$requestId': typeof MergeRequestRequestIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
@@ -168,6 +182,7 @@ export interface FileRoutesByTo {
   '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
   '/join-group': typeof JoinGroupRoute
+  '/join-table': typeof JoinTableRoute
   '/new-game': typeof NewGameRoute
   '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
@@ -180,6 +195,7 @@ export interface FileRoutesByTo {
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
+  '/live/$gameId': typeof LiveGameIdRoute
   '/merge-request/$requestId': typeof MergeRequestRequestIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
@@ -192,6 +208,7 @@ export interface FileRoutesById {
   '/groups': typeof GroupsRoute
   '/home': typeof HomeRoute
   '/join-group': typeof JoinGroupRoute
+  '/join-table': typeof JoinTableRoute
   '/new-game': typeof NewGameRoute
   '/onboarding': typeof OnboardingRoute
   '/players': typeof PlayersRoute
@@ -204,6 +221,7 @@ export interface FileRoutesById {
   '/game-over/$gameId': typeof GameOverGameIdRoute
   '/game/$gameId': typeof GameGameIdRoute
   '/group/$groupId': typeof GroupGroupIdRoute
+  '/live/$gameId': typeof LiveGameIdRoute
   '/merge-request/$requestId': typeof MergeRequestRequestIdRoute
   '/player/$playerId': typeof PlayerPlayerIdRoute
 }
@@ -217,6 +235,7 @@ export interface FileRouteTypes {
     | '/groups'
     | '/home'
     | '/join-group'
+    | '/join-table'
     | '/new-game'
     | '/onboarding'
     | '/players'
@@ -229,6 +248,7 @@ export interface FileRouteTypes {
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
+    | '/live/$gameId'
     | '/merge-request/$requestId'
     | '/player/$playerId'
   fileRoutesByTo: FileRoutesByTo
@@ -240,6 +260,7 @@ export interface FileRouteTypes {
     | '/groups'
     | '/home'
     | '/join-group'
+    | '/join-table'
     | '/new-game'
     | '/onboarding'
     | '/players'
@@ -252,6 +273,7 @@ export interface FileRouteTypes {
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
+    | '/live/$gameId'
     | '/merge-request/$requestId'
     | '/player/$playerId'
   id:
@@ -263,6 +285,7 @@ export interface FileRouteTypes {
     | '/groups'
     | '/home'
     | '/join-group'
+    | '/join-table'
     | '/new-game'
     | '/onboarding'
     | '/players'
@@ -275,6 +298,7 @@ export interface FileRouteTypes {
     | '/game-over/$gameId'
     | '/game/$gameId'
     | '/group/$groupId'
+    | '/live/$gameId'
     | '/merge-request/$requestId'
     | '/player/$playerId'
   fileRoutesById: FileRoutesById
@@ -287,6 +311,7 @@ export interface RootRouteChildren {
   GroupsRoute: typeof GroupsRoute
   HomeRoute: typeof HomeRoute
   JoinGroupRoute: typeof JoinGroupRoute
+  JoinTableRoute: typeof JoinTableRoute
   NewGameRoute: typeof NewGameRoute
   OnboardingRoute: typeof OnboardingRoute
   PlayersRoute: typeof PlayersRoute
@@ -299,6 +324,7 @@ export interface RootRouteChildren {
   GameOverGameIdRoute: typeof GameOverGameIdRoute
   GameGameIdRoute: typeof GameGameIdRoute
   GroupGroupIdRoute: typeof GroupGroupIdRoute
+  LiveGameIdRoute: typeof LiveGameIdRoute
   MergeRequestRequestIdRoute: typeof MergeRequestRequestIdRoute
   PlayerPlayerIdRoute: typeof PlayerPlayerIdRoute
 }
@@ -359,6 +385,13 @@ declare module '@tanstack/react-router' {
       path: '/new-game'
       fullPath: '/new-game'
       preLoaderRoute: typeof NewGameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join-table': {
+      id: '/join-table'
+      path: '/join-table'
+      fullPath: '/join-table'
+      preLoaderRoute: typeof JoinTableRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join-group': {
@@ -424,6 +457,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MergeRequestRequestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/live/$gameId': {
+      id: '/live/$gameId'
+      path: '/live/$gameId'
+      fullPath: '/live/$gameId'
+      preLoaderRoute: typeof LiveGameIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/group/$groupId': {
       id: '/group/$groupId'
       path: '/group/$groupId'
@@ -463,6 +503,7 @@ const rootRouteChildren: RootRouteChildren = {
   GroupsRoute: GroupsRoute,
   HomeRoute: HomeRoute,
   JoinGroupRoute: JoinGroupRoute,
+  JoinTableRoute: JoinTableRoute,
   NewGameRoute: NewGameRoute,
   OnboardingRoute: OnboardingRoute,
   PlayersRoute: PlayersRoute,
@@ -475,6 +516,7 @@ const rootRouteChildren: RootRouteChildren = {
   GameOverGameIdRoute: GameOverGameIdRoute,
   GameGameIdRoute: GameGameIdRoute,
   GroupGroupIdRoute: GroupGroupIdRoute,
+  LiveGameIdRoute: LiveGameIdRoute,
   MergeRequestRequestIdRoute: MergeRequestRequestIdRoute,
   PlayerPlayerIdRoute: PlayerPlayerIdRoute,
 }

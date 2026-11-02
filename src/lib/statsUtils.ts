@@ -1,6 +1,7 @@
 import type { CezaliGameSettings, Game, Round } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
-import { detectOkeyBurnType, getGameWinners, getLeader, getPlayerRank } from '@/lib/calculations'
+import { deriveOkeyBurnType, getFakeOkeyBurnPenalty, getGameWinners, getLeader, getOkeyBurnPenalty, getPlayerRank } from '@/lib/calculations'
+import { getBurnFromDetails } from '@/lib/roundDetails'
 import { is101Game, isBankoluGame, isCezaliGame, isCezaliSettings, isEsliGame, getTeams, teamLabel, getGameRanking, getWinnersCount } from '@/lib/gameTypes'
 import { OKEY_YUZBIR_FINISH_SCORES } from '@/lib/101calculations'
 
@@ -93,17 +94,21 @@ export function isOkeyBurn(
   round: Round,
   playerName: string
 ): boolean {
+  const fromDetails = getBurnFromDetails(round.details, playerName)
+  if (fromDetails !== null) return fromDetails
+
+  // Eski kayıtlarda ham giriş yok: yakma cezası puandan tahmin edilir, yalnızca Cezalı'da mümkün
+  if (!isCezaliGame(game)) return false
   const score = getScoreForPlayer(round.scores, playerName)
   if (score <= 0) return false
   const settings: CezaliGameSettings = isCezaliSettings(game.settings)
     ? game.settings
     : DEFAULT_SETTINGS
-  return detectOkeyBurnType(
-    score,
-    round.color,
-    settings,
-    round.fake_okey ?? false
-  ) !== null
+  const burnType = deriveOkeyBurnType(round.okey_thrown, round.double_finish)
+  const penalty = round.fake_okey
+    ? getFakeOkeyBurnPenalty(burnType)
+    : getOkeyBurnPenalty(burnType, round.color, settings)
+  return score === penalty
 }
 
 export interface PlayerProfileStats {
@@ -203,10 +208,11 @@ export function selectMyGames(
   games: Game[],
   myId: string,
   myName: string,
-  linkedOwnerIds: Set<string>
+  linkedOwnerIds: Set<string>,
+  seatedGameIds: Set<string> = new Set()
 ): Game[] {
   return filterGamesWithPlayer(games, myName).filter(
-    (g) => g.user_id === myId || linkedOwnerIds.has(g.user_id)
+    (g) => g.user_id === myId || linkedOwnerIds.has(g.user_id) || seatedGameIds.has(g.id)
   )
 }
 
@@ -215,10 +221,14 @@ export function selectFriendGames(
   friendId: string,
   friendName: string,
   myId: string,
-  myLinkedFriendIds: Set<string>
+  myLinkedFriendIds: Set<string>,
+  friendSeatedGameIds: Set<string> = new Set()
 ): Game[] {
   return filterGamesWithPlayer(games, friendName).filter(
-    (g) => g.user_id === friendId || (g.user_id === myId && myLinkedFriendIds.has(friendId))
+    (g) =>
+      g.user_id === friendId ||
+      (g.user_id === myId && myLinkedFriendIds.has(friendId)) ||
+      friendSeatedGameIds.has(g.id)
   )
 }
 
@@ -274,8 +284,7 @@ export function computeComparisonStats(
         roundWins++
         if (hasOkey && round.okey_thrown) okeyThrows++
       }
-      // Bankoluda yakma cezası puandan ayırt edilemiyor
-      if (isCezaliGame(game) && isOkeyBurn(game, round, playerName)) okeyBurns++
+      if (hasOkey && isOkeyBurn(game, round, playerName)) okeyBurns++
     }
   }
 

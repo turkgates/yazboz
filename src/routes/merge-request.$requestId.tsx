@@ -1,6 +1,6 @@
 import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
   fetchFinishedGamesOf,
   fetchMergeRequest,
@@ -17,7 +17,7 @@ import type { Game, MergeRequest, Profile, Round } from '@/types'
 
 export const Route = createFileRoute('/merge-request/$requestId')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: MergeRequestPage,
@@ -39,7 +39,7 @@ function MergeRequestPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
       if (!user) return
 
       try {

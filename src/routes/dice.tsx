@@ -1,14 +1,14 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase } from '@/lib/supabase'
+import { getLocalSession } from '@/lib/supabase'
 import { BackButton } from '@/components/layout/BackButton'
 import { DiceFace } from '@/components/DiceFace'
 import { formatDistanceToNow } from '@/lib/dateUtils'
 
 export const Route = createFileRoute('/dice')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: DicePage,

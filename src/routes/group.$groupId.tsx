@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-ro
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronRight, LogOut, Play, Trash2, UserMinus, UserPlus } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { supabase, getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
   fetchFriends,
   fetchGroupById,
@@ -28,7 +28,7 @@ import { PlayerAvatar } from '@/components/PlayerAvatar'
 
 export const Route = createFileRoute('/group/$groupId')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: GroupDetailPage,
@@ -85,7 +85,7 @@ function GroupDetailPage() {
   const [actionError, setActionError] = useState('')
 
   const load = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
     setUserId(user.id)
     setLoadError(false)

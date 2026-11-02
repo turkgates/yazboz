@@ -1,9 +1,9 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { supabase } from '@/lib/supabase'
+import { getLocalSession } from '@/lib/supabase'
 
 export const Route = createFileRoute('/')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) {
       throw redirect({ to: '/auth' })
     }

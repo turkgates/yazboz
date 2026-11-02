@@ -1,12 +1,12 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getLocalSession } from '@/lib/supabase'
 import { OkeyTile, type OkeyTileColor } from '@/components/OkeyTile'
 import { BackButton } from '@/components/layout/BackButton'
 
 export const Route = createFileRoute('/tracker')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: TrackerPage,

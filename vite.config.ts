@@ -49,10 +49,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            // Oyun ve eller telefonda ayrıca saklanır: önbellekten gelen eski yanıt yeni elleri silerdi
+            urlPattern: /^https:\/\/[^/]*\.supabase\.co\/(?!rest\/v1\/(games|rounds)(\?|$)).*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'supabase-cache',
+              networkTimeoutSeconds: 5,
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24,

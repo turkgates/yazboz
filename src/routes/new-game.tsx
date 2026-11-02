@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase, createGame, createPlayer } from '@/lib/supabase'
+import { supabase, createPlayer, getSessionUser, getLocalSession, fetchPlayers } from '@/lib/supabase'
 import { fetchGroupMembers, fetchPlayerSuggestionsWithSocial } from '@/lib/socialSupabase'
 import { useSettingsStore, useGameStore } from '@/stores/gameStore'
 import { ArrowLeft, ChevronDown, Plus, Minus, User, Play } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
-import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SayiliOkeySettings } from '@/types'
+import { syncCreateGame } from '@/lib/gameSync'
+import type { Game, GameSubtype, GameType, OkeyYuzbirSettings, SavedPlayer, SayiliOkeySettings } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { DEFAULT_101_SETTINGS, DEFAULT_SAYILI_SETTINGS } from '@/lib/gameTypes'
 import { GameRulesModal } from '@/components/GameRulesModal'
@@ -17,7 +18,7 @@ export const Route = createFileRoute('/new-game')({
     group: typeof search.group === 'string' ? search.group : undefined,
   }),
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: NewGamePage,
@@ -26,6 +27,7 @@ export const Route = createFileRoute('/new-game')({
 type MainCategory = 'cezali' | 'sayili' | '101' | 'bankolu'
 
 const MAX_PLAYERS = 4
+const PLAYERS_CACHE_KEY = 'yazboz-players-cache'
 
 const GAME_TYPES: {
   key: MainCategory
@@ -75,8 +77,13 @@ function NewGamePage() {
   const effectivePlayerCount = isEsli ? 4 : playerCount
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setUserId(data.user.id)
+    getSessionUser().then(async ({ data }) => {
+      if (!data.user) return
+      setUserId(data.user.id)
+      if (!navigator.onLine) return
+      // İnternetsizken de kayıtlı oyuncular önerilebilsin
+      const { data: players } = await fetchPlayers(data.user.id)
+      if (players) localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify(players))
     })
   }, [])
 
@@ -86,7 +93,7 @@ function NewGamePage() {
 
   // Gruptan başlatılan oyunda üyeler hazır gelir, kişi kendini ilk sırada görür
   useEffect(() => {
-    if (!groupId) return
+    if (!groupId || !navigator.onLine) return
     const fillFromGroup = async () => {
       const [{ data: { user } }, { data: members }] = await Promise.all([
         supabase.auth.getUser(),
@@ -134,7 +141,7 @@ function NewGamePage() {
       return
     }
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) {
       navigate({ to: '/auth' })
       return
@@ -182,7 +189,7 @@ function NewGamePage() {
       created_at: new Date().toISOString(),
     }
 
-    const { error: createError } = await createGame(gameData)
+    const { error: createError } = await syncCreateGame(gameData)
 
     if (createError) {
       console.error('Create game error:', createError)
@@ -570,6 +577,17 @@ function PlayerAutocompleteInput({
       return
     }
 
+    if (!navigator.onLine) {
+      const cached = JSON.parse(localStorage.getItem(PLAYERS_CACHE_KEY) ?? '[]') as SavedPlayer[]
+      const lower = query.trim().toLowerCase()
+      setSuggestions(
+        cached
+          .filter((p) => p.name.toLowerCase().includes(lower))
+          .map((p) => ({ id: p.id, name: p.name, avatar_url: p.avatar_url }))
+      )
+      return
+    }
+
     fetchPlayerSuggestionsWithSocial(userId, query.trim()).then((results) => {
       setSuggestions(
         results.map((r) => ({
@@ -610,7 +628,7 @@ function PlayerAutocompleteInput({
 
   const trimmed = value.trim()
   const hasExactMatch = suggestions.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())
-  const showCreateOption = trimmed.length > 0 && !hasExactMatch
+  const showCreateOption = trimmed.length > 0 && !hasExactMatch && navigator.onLine
 
   return (
     <div ref={containerRef} className="relative">
@@ -667,7 +685,7 @@ function PlayerAutocompleteInput({
               + &apos;{trimmed}&apos; oyuncusunu kaydet
             </button>
           )}
-          {suggestions.length === 0 && !showCreateOption && (
+          {suggestions.length === 0 && !showCreateOption && navigator.onLine && (
             <p className="px-3 py-2.5 text-[#718096] text-sm">Eşleşme yok</p>
           )}
         </div>

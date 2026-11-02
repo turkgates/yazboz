@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
-import { supabase, uploadAvatar, signOut } from '@/lib/supabase'
+import { uploadAvatar, signOut, getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
   fetchUserProfile,
   upsertProfile,
@@ -19,7 +19,7 @@ export const Route = createFileRoute('/profile')({
     tab: search.tab === 'stats' || search.tab === 'groups' ? search.tab : undefined,
   }),
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: ProfilePage,
@@ -58,7 +58,7 @@ function ProfilePage() {
   }, [])
 
   const loadAll = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
     setUserId(user.id)
 

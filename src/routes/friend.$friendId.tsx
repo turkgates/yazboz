@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-ro
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronRight, Link2, UserMinus } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
   areFriends,
   countLocalPlayers,
@@ -12,6 +12,7 @@ import {
   fetchVisibleFinishedGames,
   getSupabaseErrorMessage,
   removeFriend,
+  NO_PLAYER_LINKS,
   type PlayerLinks,
 } from '@/lib/socialSupabase'
 import { dispatchPlayersRefresh } from '@/lib/friendUtils'
@@ -35,7 +36,7 @@ import type { Game, MergeRequest, Profile, Round } from '@/types'
 
 export const Route = createFileRoute('/friend/$friendId')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: FriendDetailPage,
@@ -56,7 +57,7 @@ function FriendDetailPage() {
   const [isFriend, setIsFriend] = useState(false)
   const [games, setGames] = useState<Game[]>([])
   const [roundsByGame, setRoundsByGame] = useState<Record<string, Round[]>>({})
-  const [links, setLinks] = useState<PlayerLinks>({ linkedOwnerIds: new Set(), myLinkedFriendIds: new Set() })
+  const [links, setLinks] = useState<PlayerLinks>(NO_PLAYER_LINKS)
   const [localPlayerCount, setLocalPlayerCount] = useState(0)
   const [mergeRequest, setMergeRequest] = useState<MergeRequest | null>(null)
   const [showMerge, setShowMerge] = useState(false)
@@ -82,7 +83,7 @@ function FriendDetailPage() {
     const load = async () => {
       setLoading(true)
       setLoadError(false)
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
       if (!user) return
       setMyId(user.id)
 
@@ -115,11 +116,11 @@ function FriendDetailPage() {
   const friendName = friend?.display_name ?? friend?.username ?? 'Arkadaş'
 
   const friendGames = useMemo(
-    () => selectFriendGames(games, friendId, friendName, myId, links.myLinkedFriendIds),
+    () => selectFriendGames(games, friendId, friendName, myId, links.myLinkedFriendIds, links.seatedGameIds.get(friendId)),
     [games, friendId, friendName, myId, links]
   )
   const myGames = useMemo(
-    () => selectMyGames(games, myId, myName, links.linkedOwnerIds),
+    () => selectMyGames(games, myId, myName, links.linkedOwnerIds, links.seatedGameIds.get(myId)),
     [games, myId, myName, links]
   )
   const headToHead = useMemo(

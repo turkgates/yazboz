@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser, getLocalSession } from '@/lib/supabase'
 import { createGroup, fetchMyGroups, fetchUserProfile } from '@/lib/socialSupabase'
 import type { Group } from '@/types'
 import { BackButton } from '@/components/layout/BackButton'
@@ -12,7 +12,7 @@ export const Route = createFileRoute('/groups')({
     create: search.create === true ? true : undefined,
   }),
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: GroupsPage,
@@ -30,7 +30,7 @@ function GroupsPage() {
   const [error, setError] = useState('')
 
   const loadGroups = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
     setLoading(true)
     const { data, error } = await fetchMyGroups(user.id)
@@ -51,7 +51,7 @@ function GroupsPage() {
     setCreating(true)
     setError('')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
       if (!user) {
         navigate({ to: '/auth' })
         return
