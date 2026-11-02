@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { supabase, getSessionUser } from '@/lib/supabase'
 import {
   checkPendingMergeRequest,
   getSupabaseErrorMessage,
@@ -50,7 +50,7 @@ export function MergeRequestModal({
 
   const loadLocalPlayers = async () => {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) {
       setLoading(false)
       return

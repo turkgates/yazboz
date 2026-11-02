@@ -1,17 +1,15 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { fetchPlayers, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
-  supabase,
-  fetchGameWithRounds,
-  fetchPlayers,
-  insertRound,
-  isDuplicateRoundError,
-  DUPLICATE_ROUND_MESSAGE,
-  updateGame,
-  updateRound,
-  deleteRound,
-} from '@/lib/supabase'
+  loadGameWithRounds,
+  syncDeleteRound,
+  syncInsertRound,
+  syncUpdateGame,
+  syncUpdateRound,
+} from '@/lib/gameSync'
+import { buildCezaliDetails } from '@/lib/roundDetails'
 import type { SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
 import { Plus, MoreVertical } from 'lucide-react'
@@ -31,7 +29,7 @@ import { DEFAULT_SETTINGS, type CezaliGameSettings } from '@/types'
 
 export const Route = createFileRoute('/game/$gameId')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: GamePage,
@@ -65,15 +63,16 @@ function GamePage() {
   }, [gameId])
 
   const loadSavedPlayers = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
+    if (!navigator.onLine) return
     const { data } = await fetchPlayers(user.id)
     setSavedPlayers(data ?? [])
   }
 
   const loadGameData = async () => {
     setLoading(true)
-    const { game, rounds: r } = await fetchGameWithRounds(gameId)
+    const { game, rounds: r } = await loadGameWithRounds(gameId)
     if (game) loadGame(game, r)
     setLoading(false)
   }
@@ -97,14 +96,16 @@ function GamePage() {
     if (!currentGame) return false
 
     const scores = buildScores(input)
+    const details = buildCezaliDetails(input.noWinner ?? false, input.playerResults)
 
     if (editingRound) {
-      const { error } = await updateRound(editingRound.id, {
+      const { error } = await syncUpdateRound(gameId, editingRound.id, {
         color: input.color,
         okey_thrown: input.okeyThrown,
         double_finish: input.doubleFinish,
         fake_okey: input.fakeOkey ?? false,
         scores,
+        details,
       })
 
       if (error) {
@@ -122,7 +123,7 @@ function GamePage() {
     const roundNumber = rounds.length + 1
     const roundId = uuidv4()
 
-    const { data, error } = await insertRound({
+    const { data, error } = await syncInsertRound({
       id: roundId,
       game_id: gameId,
       round_number: roundNumber,
@@ -131,6 +132,7 @@ function GamePage() {
       double_finish: input.doubleFinish,
       fake_okey: input.fakeOkey ?? false,
       scores,
+      details,
     })
 
     if (error) {
@@ -153,7 +155,7 @@ function GamePage() {
 
     if (roundNumber >= currentGame.total_rounds) {
       finishGame()
-      const { error: finishError } = await updateGame(gameId, {
+      const { error: finishError } = await syncUpdateGame(gameId, {
         status: 'finished',
         finished_at: new Date().toISOString(),
       })
@@ -168,29 +170,27 @@ function GamePage() {
   const handleDeleteRound = async (roundId: string) => {
     if (!currentGame) return
 
+    const previousNumbers = new Map(rounds.map((r) => [r.id, r.round_number]))
+
     deleteRoundInStore(roundId)
     setConfirmDeleteId(null)
     setOpenMenuId(null)
 
     const updatedRounds = useGameStore.getState().rounds
 
-    try {
-      await deleteRound(roundId)
-      for (const round of updatedRounds) {
-        await updateRound(round.id, { round_number: round.round_number })
+    const { error } = await syncDeleteRound(gameId, roundId)
+    if (error) console.error('Delete round error:', error)
+    for (const round of updatedRounds) {
+      if (previousNumbers.get(round.id) !== round.round_number) {
+        await syncUpdateRound(gameId, round.id, { round_number: round.round_number })
       }
-    } catch (err) {
-      console.error('Delete round error:', err)
     }
 
     if (currentGame.status === 'finished' && updatedRounds.length < currentGame.total_rounds) {
       const reopenedGame = { ...currentGame, status: 'active' as const, finished_at: null }
       loadGame(reopenedGame, updatedRounds)
-      try {
-        await updateGame(gameId, { status: 'active', finished_at: null })
-      } catch (err) {
-        console.error('Reopen game error:', err)
-      }
+      const { error: reopenError } = await syncUpdateGame(gameId, { status: 'active', finished_at: null })
+      if (reopenError) console.error('Reopen game error:', reopenError)
     }
   }
 

@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronRight, UserPlus } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
   fetchFriends,
   fetchPendingMergeApprovals,
@@ -13,6 +13,7 @@ import {
   fetchVisibleFinishedGames,
   getSupabaseErrorMessage,
   respondToFriendRequest,
+  NO_PLAYER_LINKS,
   type PlayerLinks,
 } from '@/lib/socialSupabase'
 import {
@@ -36,7 +37,7 @@ import type { Friend, FriendRequest, Game, MergeRequest, Profile, Round } from '
 
 export const Route = createFileRoute('/friends')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: FriendsPage,
@@ -49,7 +50,7 @@ function FriendsPage() {
   const [pending, setPending] = useState<FriendRequest[]>([])
   const [sent, setSent] = useState<FriendRequest[]>([])
   const [mergeApprovals, setMergeApprovals] = useState<MergeRequest[]>([])
-  const [links, setLinks] = useState<PlayerLinks>({ linkedOwnerIds: new Set(), myLinkedFriendIds: new Set() })
+  const [links, setLinks] = useState<PlayerLinks>(NO_PLAYER_LINKS)
   const [games, setGames] = useState<Game[] | null>(null)
   const [roundsByGame, setRoundsByGame] = useState<Record<string, Round[]>>({})
   const [loading, setLoading] = useState(true)
@@ -87,7 +88,7 @@ function FriendsPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
       if (!user) return
       setUserId(user.id)
       const [profileRes] = await Promise.all([fetchUserProfile(user.id), loadFriends(user.id)])
@@ -104,11 +105,11 @@ function FriendsPage() {
   const summaries = useMemo(() => {
     const map: Record<string, { played: number; winRate: number; myWins: number; friendWins: number; together: number }> = {}
     if (!games) return map
-    const myGames = selectMyGames(games, userId, myName, links.linkedOwnerIds)
+    const myGames = selectMyGames(games, userId, myName, links.linkedOwnerIds, links.seatedGameIds.get(userId))
     for (const friend of friends) {
       const name = friend.friend_profile?.display_name
       if (!name) continue
-      const friendGames = selectFriendGames(games, friend.friend_id, name, userId, links.myLinkedFriendIds)
+      const friendGames = selectFriendGames(games, friend.friend_id, name, userId, links.myLinkedFriendIds, links.seatedGameIds.get(friend.friend_id))
       const stats = computeComparisonStats(name, friendGames, roundsByGame)
       const h2h = computeHeadToHead(myName, name, intersectGames(myGames, friendGames), roundsByGame)
       map[friend.friend_id] = {

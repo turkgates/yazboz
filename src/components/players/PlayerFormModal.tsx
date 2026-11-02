@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Camera, X } from 'lucide-react'
-import { supabase, createPlayer, updatePlayer, uploadAvatar } from '@/lib/supabase'
+import { createPlayer, updatePlayer, uploadAvatar, getSessionUser } from '@/lib/supabase'
 import type { SavedPlayer } from '@/types'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { v4 as uuidv4 } from 'uuid'
@@ -44,7 +44,7 @@ export function PlayerFormModal({ player, onClose, onSaved }: PlayerFormModalPro
     setError('')
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
       if (!user) throw new Error('Oturum bulunamadı')
 
       let finalAvatarUrl = player?.avatar_url ?? null

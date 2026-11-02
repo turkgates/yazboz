@@ -3,12 +3,12 @@ import { persist } from 'zustand/middleware'
 import type { Game, Round, RoundInput, CezaliGameSettings } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import { calculateAllScores, calculateTotals, getLeader } from '@/lib/calculations'
+import { buildCezaliDetails } from '@/lib/roundDetails'
 import { isCezaliSettings, isSayiliGame } from '@/lib/gameTypes'
 
 interface GameStore {
   currentGame: Game | null
   rounds: Round[]
-  pendingSync: boolean
 
   startGame: (game: Game) => void
   addRound: (roundId: string, roundNumber: number, input: RoundInput) => void
@@ -18,7 +18,6 @@ interface GameStore {
   finishGame: () => void
   loadGame: (game: Game, rounds: Round[]) => void
   clearGame: () => void
-  setPendingSync: (pending: boolean) => void
 
   getTotals: () => Record<string, number>
   getCurrentRoundNumber: () => number
@@ -37,9 +36,8 @@ export const useGameStore = create<GameStore>()(
     (set, get) => ({
       currentGame: null,
       rounds: [],
-      pendingSync: false,
 
-      startGame: (game) => set({ currentGame: game, rounds: [], pendingSync: false }),
+      startGame: (game) => set({ currentGame: game, rounds: [] }),
 
       addRound: (roundId, roundNumber, input) => {
         const state = get()
@@ -104,6 +102,7 @@ export const useGameStore = create<GameStore>()(
                   double_finish: input.doubleFinish,
                   fake_okey: input.fakeOkey ?? false,
                   scores,
+                  details: buildCezaliDetails(input.noWinner ?? false, input.playerResults),
                 }
               : r
           ),
@@ -129,9 +128,7 @@ export const useGameStore = create<GameStore>()(
 
       loadGame: (game, rounds) => set({ currentGame: game, rounds }),
 
-      clearGame: () => set({ currentGame: null, rounds: [], pendingSync: false }),
-
-      setPendingSync: (pending) => set({ pendingSync: pending }),
+      clearGame: () => set({ currentGame: null, rounds: [] }),
 
       getTotals: () => {
         const { currentGame, rounds } = get()
@@ -165,7 +162,6 @@ export const useGameStore = create<GameStore>()(
       partialize: (state) => ({
         currentGame: state.currentGame,
         rounds: state.rounds,
-        pendingSync: state.pendingSync,
       }),
     }
   )

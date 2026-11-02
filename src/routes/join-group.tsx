@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser, getLocalSession } from '@/lib/supabase'
 import { joinGroupByCode, PENDING_INVITE_KEY } from '@/lib/socialSupabase'
 import { BackButton } from '@/components/layout/BackButton'
 import { ArrowRight } from 'lucide-react'
@@ -13,7 +13,7 @@ export const Route = createFileRoute('/join-group')({
     code: search.code === undefined ? undefined : String(search.code),
   }),
   beforeLoad: async ({ search }) => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) {
       if (search.code) sessionStorage.setItem(PENDING_INVITE_KEY, search.code)
       throw redirect({ to: '/auth' })
@@ -34,7 +34,7 @@ function JoinGroupPage() {
     setLoading(true)
     setError('')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
       if (!user) { navigate({ to: '/auth' }); return }
       const group = await joinGroupByCode(code.trim())
       navigate({ to: '/group/$groupId', params: { groupId: group.id }, replace: true })

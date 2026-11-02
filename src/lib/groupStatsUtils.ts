@@ -194,7 +194,7 @@ export function computeGroupStats(
     const hasOkey = isCezaliGame(game) || isBankoluGame(game)
     for (const round of playedRounds) {
       if (hasOkey && round.okey_thrown) okeyThrows++
-      if (isCezaliGame(game)) {
+      if (hasOkey) {
         okeyBurns += game.players.filter((p) => isOkeyBurn(game, round, p)).length
       }
     }

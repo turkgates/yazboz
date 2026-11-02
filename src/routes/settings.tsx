@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { supabase, signOut } from '@/lib/supabase'
+import { signOut, getSessionUser, getLocalSession } from '@/lib/supabase'
 import { useSettingsStore } from '@/stores/gameStore'
 import type { Color } from '@/types'
 import { COLOR_LABELS, COLOR_HEX, DEFAULT_SETTINGS } from '@/types'
@@ -9,7 +9,7 @@ import { BackButton } from '@/components/layout/BackButton'
 
 export const Route = createFileRoute('/settings')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: SettingsPage,
@@ -23,7 +23,7 @@ function SettingsPage() {
   const [email, setEmail] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    getSessionUser().then(({ data }) => {
       setEmail(data.user?.email ?? '')
     })
   }, [])

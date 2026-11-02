@@ -163,22 +163,6 @@ export function reverseNoWinnerRawPoints(
   return Math.round(score / baseMultiplier)
 }
 
-export function detectOkeyBurnType(
-  score: number,
-  color: Color,
-  settings: CezaliGameSettings = DEFAULT_SETTINGS,
-  fakeOkey = false
-): OkeyBurnType | null {
-  const types: OkeyBurnType[] = ['normal_win', 'okey_thrown', 'double_okey']
-  for (const type of types) {
-    const penalty = fakeOkey
-      ? getFakeOkeyBurnPenalty(type)
-      : getOkeyBurnPenalty(type, color, settings)
-    if (score === penalty) return type
-  }
-  return null
-}
-
 export function isFakeOkeyWinnerScore(score: number): boolean {
   return score === -100 || score === -1000 || score === -2000
 }

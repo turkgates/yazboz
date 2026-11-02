@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { v4 as uuidv4 } from 'uuid'
-import { fetchGameWithRounds, insertRound, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, updateGame } from '@/lib/supabase'
+import { isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE } from '@/lib/supabase'
+import { loadGameWithRounds, syncInsertRound, syncUpdateGame } from '@/lib/gameSync'
+import { buildSayiliDetails } from '@/lib/roundDetails'
 import { useGameStore } from '@/stores/gameStore'
 import type { SayiliOkeySettings } from '@/types'
 import {
@@ -55,7 +57,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
 
   const loadGameData = async () => {
     setLoading(true)
-    const { game: g, rounds: r } = await fetchGameWithRounds(gameId)
+    const { game: g, rounds: r } = await loadGameWithRounds(gameId)
     if (g) loadGame(g, r)
     setLoading(false)
   }
@@ -74,7 +76,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
 
   const finishGameAndNavigate = async () => {
     finishGame()
-    await updateGame(gameId, { status: 'finished', finished_at: new Date().toISOString() })
+    await syncUpdateGame(gameId, { status: 'finished', finished_at: new Date().toISOString() })
     navigate({ to: '/game-over/$gameId', params: { gameId } })
   }
 
@@ -89,7 +91,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
   const saveRound = async (
     entity: string,
     drop: number,
-    opts: { isIndicatorOnly: boolean }
+    opts: { isIndicatorOnly: boolean; finishType?: SayiliFinishType }
   ) => {
     setSaving(true)
     const roundNumber = rounds.length + 1
@@ -99,7 +101,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
     for (const e of entities) scores[e] = 0
     scores[entity] = -drop
 
-    const { data, error } = await insertRound({
+    const { data, error } = await syncInsertRound({
       id: roundId,
       game_id: gameId,
       round_number: roundNumber,
@@ -110,6 +112,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
       scores,
       indicator_players: opts.isIndicatorOnly ? [entity] : [],
       is_indicator_only: opts.isIndicatorOnly,
+      details: buildSayiliDetails(entity, drop, opts.finishType ?? null),
     })
 
     setSaving(false)
@@ -146,7 +149,7 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
     const finishValue = getSayiliFinishValue(settings, type)
 
     setFinishTarget(null)
-    await saveRound(finishTarget, finishValue, { isIndicatorOnly: false })
+    await saveRound(finishTarget, finishValue, { isIndicatorOnly: false, finishType: type })
   }
 
   const handleManualEnd = async () => {

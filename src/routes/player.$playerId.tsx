@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { supabase } from '@/lib/supabase'
+import { supabase, getSessionUser, getLocalSession } from '@/lib/supabase'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { Pencil } from 'lucide-react'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
@@ -11,7 +11,7 @@ import { PlayerStats } from '@/components/PlayerStats'
 
 export const Route = createFileRoute('/player/$playerId')({
   beforeLoad: async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const session = await getLocalSession()
     if (!session) throw redirect({ to: '/auth' })
   },
   component: PlayerProfilePage,
@@ -39,7 +39,7 @@ function PlayerProfilePage() {
   const [showEditModal, setShowEditModal] = useState(false)
 
   const loadProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await getSessionUser()
     if (!user) return
 
     const { data: playerData, error } = await supabase

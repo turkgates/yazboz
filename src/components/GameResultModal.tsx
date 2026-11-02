@@ -2,10 +2,8 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { useNavigate } from '@tanstack/react-router'
-import type { CezaliGameSettings, Game, Round, SavedPlayer } from '@/types'
-import { DEFAULT_SETTINGS } from '@/types'
+import type { Game, Round, SavedPlayer } from '@/types'
 import {
-  isCezaliSettings,
   getGameRanking,
   getGameBadgeLabel,
   getTeamPlayers,
@@ -19,8 +17,10 @@ import { getBankoSummaryLines } from '@/lib/bankoluStatsUtils'
 import { ShareCard } from '@/components/ShareCard'
 import { shareGameResult } from '@/lib/shareUtils'
 import { getSayiliStartScore } from '@/lib/teamStatsUtils'
-import { supabase, fetchPlayers } from '@/lib/supabase'
-import { detectOkeyBurnType, getLeader } from '@/lib/calculations'
+import { fetchPlayers, getSessionUser } from '@/lib/supabase'
+import { loadGameWithRounds } from '@/lib/gameSync'
+import { getLeader } from '@/lib/calculations'
+import { isOkeyBurn } from '@/lib/statsUtils'
 import { formatGameDate } from '@/lib/dateUtils'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { TeamAvatars } from '@/components/TeamAvatars'
@@ -48,10 +48,6 @@ function computeGameSummary(game: Game, rounds: Round[]): Omit<GameSummary, 'gam
   let fakeOkeyRounds = 0
 
   if (isCezaliGame(game)) {
-    const cezaliSettings: CezaliGameSettings = isCezaliSettings(game.settings)
-      ? game.settings
-      : DEFAULT_SETTINGS
-
     for (const player of game.players) {
       okeyThrows[player] = 0
       okeyBurns[player] = 0
@@ -73,11 +69,7 @@ function computeGameSummary(game: Game, rounds: Round[]): Omit<GameSummary, 'gam
       }
 
       for (const player of game.players) {
-        const score = round.scores[player] ?? 0
-        if (
-          score > 0 &&
-          detectOkeyBurnType(score, round.color, cezaliSettings, round.fake_okey ?? false)
-        ) {
+        if (isOkeyBurn(game, round, player)) {
           okeyBurns[player]++
         }
       }
@@ -113,19 +105,17 @@ export function GameResultModal({
     })
 
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user } } = await getSessionUser()
 
-      const [gameRes, roundsRes, playersRes] = await Promise.all([
-        supabase.from('games').select('*').eq('id', gameId).single<Game>(),
-        supabase.from('rounds').select('*').eq('game_id', gameId).order('round_number').returns<Round[]>(),
-        user ? fetchPlayers(user.id) : Promise.resolve({ data: [] as SavedPlayer[] }),
+      const [{ game, rounds }, playersRes] = await Promise.all([
+        loadGameWithRounds(gameId),
+        user && navigator.onLine ? fetchPlayers(user.id) : Promise.resolve({ data: [] as SavedPlayer[] }),
       ])
 
-      if (gameRes.data) {
-        const rounds = roundsRes.data ?? []
+      if (game) {
         setSummary({
-          game: gameRes.data,
-          ...computeGameSummary(gameRes.data, rounds),
+          game,
+          ...computeGameSummary(game, rounds),
         })
       }
       setSavedPlayers(playersRes.data ?? [])

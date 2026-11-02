@@ -1,4 +1,4 @@
-import { fetchAllPages, supabase } from '@/lib/supabase'
+import { fetchAllPages, supabase, getSessionUser } from '@/lib/supabase'
 import { filterGamesWithPlayer, groupRoundsByGame } from '@/lib/statsUtils'
 import type { Friend, FriendRequest, Game, Group, GroupMember, MergeRequest, Profile, Round, SavedPlayer } from '@/types'
 
@@ -495,7 +495,7 @@ export async function createLinkedFriendPlayer(currentUserId: string, friendUser
 }
 
 export async function ensureSelfInPlayers() {
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getSessionUser()
   if (!user) return
 
   const { data: profile } = await supabase
@@ -718,6 +718,20 @@ async function fetchFinishedGames(ownerIds?: string[]) {
   return { games, rounds, roundsByGame: groupRoundsByGame(rounds) }
 }
 
+async function fetchFinishedGamesByIds(gameIds: string[]) {
+  const games: Game[] = []
+  for (let i = 0; i < gameIds.length; i += ROUNDS_GAME_CHUNK) {
+    const { data, error } = await supabase
+      .from('games')
+      .select('*')
+      .in('id', gameIds.slice(i, i + ROUNDS_GAME_CHUNK))
+      .eq('status', 'finished')
+    if (error) throw error
+    games.push(...((data ?? []) as Game[]))
+  }
+  return { games, rounds: await fetchRoundsOfGames(games) }
+}
+
 export function fetchVisibleFinishedGames() {
   return fetchFinishedGames()
 }
@@ -731,19 +745,41 @@ export interface PlayerLinks {
   linkedOwnerIds: Set<string>
   // Benim listemde bağladığım arkadaşlar
   myLinkedFriendIds: Set<string>
+  // Canlı masada koltuk alanlar: kişi başına oturduğu oyunlar
+  seatedGameIds: Map<string, Set<string>>
+}
+
+export const NO_PLAYER_LINKS: PlayerLinks = {
+  linkedOwnerIds: new Set(),
+  myLinkedFriendIds: new Set(),
+  seatedGameIds: new Map(),
 }
 
 export async function fetchPlayerLinks(userId: string): Promise<PlayerLinks> {
-  const { data, error } = await supabase
-    .from('players')
-    .select('user_id, linked_user_id')
-    .or(`user_id.eq.${userId},linked_user_id.eq.${userId}`)
-    .not('linked_user_id', 'is', null)
+  const [{ data, error }, { data: seats, error: seatsError }] = await Promise.all([
+    supabase
+      .from('players')
+      .select('user_id, linked_user_id')
+      .or(`user_id.eq.${userId},linked_user_id.eq.${userId}`)
+      .not('linked_user_id', 'is', null),
+    supabase
+      .from('game_participants')
+      .select('user_id, game_id')
+      .not('player_name', 'is', null),
+  ])
 
   if (error) console.error('Oyuncu bağlantıları yüklenemedi:', error)
+  if (seatsError) console.error('Masa kayıtları yüklenemedi:', seatsError)
+
+  const seatedGameIds = new Map<string, Set<string>>()
+  for (const seat of (seats ?? []) as { user_id: string; game_id: string }[]) {
+    if (!seatedGameIds.has(seat.user_id)) seatedGameIds.set(seat.user_id, new Set())
+    seatedGameIds.get(seat.user_id)!.add(seat.game_id)
+  }
 
   const rows = (data ?? []) as { user_id: string; linked_user_id: string }[]
   return {
+    seatedGameIds,
     linkedOwnerIds: new Set(
       rows.filter((r) => r.linked_user_id === userId && r.user_id !== userId).map((r) => r.user_id)
     ),
@@ -755,8 +791,16 @@ export async function fetchPlayerLinks(userId: string): Promise<PlayerLinks> {
 
 // Kişisel istatistik: kendi kayıtları ve kendisini bağlayan arkadaşların kayıtlarında oynadığı oyunlar
 export async function fetchMyStatsGames(userId: string, playerName: string) {
-  const { linkedOwnerIds } = await fetchPlayerLinks(userId)
-  const { games, rounds } = await fetchFinishedGames([userId, ...linkedOwnerIds])
+  const { linkedOwnerIds, seatedGameIds } = await fetchPlayerLinks(userId)
+  const owned = await fetchFinishedGames([userId, ...linkedOwnerIds])
+
+  // Masaya katıldığı oyunlar başkasının kaydında olabilir
+  const ownedIds = new Set(owned.games.map((g) => g.id))
+  const seatIds = [...(seatedGameIds.get(userId) ?? [])].filter((id) => !ownedIds.has(id))
+  const seated = await fetchFinishedGamesByIds(seatIds)
+
+  const games = [...owned.games, ...seated.games]
+  const rounds = [...owned.rounds, ...seated.rounds]
 
   const linkedGameIds = new Set(
     filterGamesWithPlayer(

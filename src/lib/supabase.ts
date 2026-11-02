@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type User } from '@supabase/supabase-js'
 import type { Game, Round, Profile, SavedPlayer } from '@/types'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -14,8 +14,38 @@ export const initialAuthHash = window.location.hash
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 
+const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`
+const SESSION_CHECK_TIMEOUT_MS = 2000
+
+export function readStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
+    return raw ? (JSON.parse(raw).user ?? null) : null
+  } catch {
+    return null
+  }
+}
+
+// İnternet yokken süresi dolmuş oturum yenilenemez ve getSession yarım dakikaya kadar bekler.
+// Oturum telefonda duruyorsa kişi oyununa devam edebilmeli; yetkiyi zaten sunucu denetler.
+export async function getSessionUser(): Promise<{ data: { user: User | null } }> {
+  const stored = readStoredUser()
+  if (!navigator.onLine) return { data: { user: stored } }
+
+  const session = await Promise.race([
+    supabase.auth.getSession().then(({ data }) => data.session),
+    new Promise<undefined>((resolve) => setTimeout(resolve, SESSION_CHECK_TIMEOUT_MS)),
+  ])
+  return { data: { user: session?.user ?? stored } }
+}
+
+export async function getLocalSession() {
+  const { data: { user } } = await getSessionUser()
+  return user ? { user } : null
+}
+
 export async function getCurrentUser() {
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user } } = await getSessionUser()
   return user
 }
 
@@ -28,7 +58,10 @@ export async function signUp(email: string, password: string) {
 }
 
 export async function signOut() {
-  return supabase.auth.signOut()
+  const result = await supabase.auth.signOut()
+  // Önbellekteki yanıtlar başka hesaba açılmasın
+  if ('caches' in window) await caches.delete('supabase-cache').catch(() => false)
+  return result
 }
 
 export async function resetPassword(email: string) {
@@ -100,50 +133,12 @@ export async function fetchGameWithRounds(gameId: string) {
   }
 }
 
-export async function createGame(gameData: Omit<Game, 'created_at'>) {
-  return supabase
-    .from('games')
-    .upsert(gameData as Record<string, unknown>)
-    .select()
-    .single<Game>()
-}
-
-export async function updateGame(gameId: string, updates: Partial<Omit<Game, 'id' | 'user_id' | 'created_at'>>) {
-  return supabase
-    .from('games')
-    .update(updates as Record<string, unknown>)
-    .eq('id', gameId)
-    .select()
-    .single<Game>()
-}
-
-export async function insertRound(roundData: Omit<Round, 'created_at'>) {
-  return supabase
-    .from('rounds')
-    .insert(roundData as Record<string, unknown>)
-    .select()
-    .single<Round>()
-}
-
 // El numarası istemcide hesaplanır: başka cihazdan el girildiyse yerel liste eskimiş olur
 export const DUPLICATE_ROUND_MESSAGE =
   'Bu el numarası başka bir kayıtla çakıştı. Tablo yenilendi, kontrol edip devam edebilirsin.'
 
 export function isDuplicateRoundError(error: { code?: string } | null) {
   return error?.code === '23505'
-}
-
-export async function updateRound(roundId: string, updates: Partial<Omit<Round, 'id' | 'game_id' | 'created_at'>>) {
-  return supabase
-    .from('rounds')
-    .update(updates as Record<string, unknown>)
-    .eq('id', roundId)
-    .select()
-    .single<Round>()
-}
-
-export async function deleteRound(roundId: string) {
-  return supabase.from('rounds').delete().eq('id', roundId)
 }
 
 export async function fetchProfile(userId: string) {

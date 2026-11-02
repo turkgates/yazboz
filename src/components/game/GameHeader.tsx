@@ -1,9 +1,12 @@
 import { useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import { BackButton } from '@/components/layout/BackButton'
+import { LiveTableSheet } from '@/components/game/LiveTableSheet'
+import { readStoredUser } from '@/lib/supabase'
 import { getGameBadgeLabel } from '@/lib/gameTypes'
 import type { Game } from '@/types'
 import { formatGameDate } from '@/lib/dateUtils'
-import { Settings, Flag } from 'lucide-react'
+import { Settings, Flag, Radio } from 'lucide-react'
 import { GameRulesModal, RulesHelpButton } from '@/components/GameRulesModal'
 import { toRulesKey } from '@/lib/gameRules'
 
@@ -26,7 +29,9 @@ export function GameHeader({
 }: GameHeaderProps) {
   const note = 'note' in game.settings ? game.settings.note : undefined
   const [showRules, setShowRules] = useState(false)
+  const [showLive, setShowLive] = useState(false)
   const rulesKey = toRulesKey(game.game_type)
+  const canShareLive = !isFinished && readStoredUser()?.id === game.user_id
 
   return (
     <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top shrink-0">
@@ -58,6 +63,16 @@ export function GameHeader({
           <p className="text-[#718096] text-xs">{formatGameDate(game.created_at)}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {canShareLive && (
+            <button
+              type="button"
+              onClick={() => setShowLive(true)}
+              aria-label="Canlı Masa"
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-[#0f3460] text-green-400 hover:text-white transition-colors"
+            >
+              <Radio size={17} />
+            </button>
+          )}
           {showEndGame && onEndGame && !isFinished && (
             <button
               type="button"
@@ -89,6 +104,10 @@ export function GameHeader({
           onClose={() => setShowRules(false)}
         />
       )}
+
+      <AnimatePresence>
+        {showLive && <LiveTableSheet game={game} onClose={() => setShowLive(false)} />}
+      </AnimatePresence>
     </div>
   )
 }

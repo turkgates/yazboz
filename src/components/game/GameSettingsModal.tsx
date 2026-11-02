@@ -2,11 +2,8 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import type { Game } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
-import {
-  fetchGameWithRounds,
-  updateGame,
-  updateRound,
-} from '@/lib/supabase'
+import { loadGameWithRounds, syncUpdateGame, syncUpdateRound } from '@/lib/gameSync'
+import { renameDetailsKeys } from '@/lib/roundDetails'
 import {
   getGameBadgeLabel,
   getTeams,
@@ -117,7 +114,7 @@ export function GameSettingsModal({ game, onClose, onSaved }: Props) {
         newBankoHistory = remapBankoHistory(game.banko_history, game, trimmedNames, nameMap)
       }
 
-      const { data, error: updateError } = await updateGame(game.id, {
+      const { data, error: updateError } = await syncUpdateGame(game.id, {
         total_rounds: totalRounds,
         players: trimmedNames,
         teams: newTeams,
@@ -128,7 +125,7 @@ export function GameSettingsModal({ game, onClose, onSaved }: Props) {
       if (updateError) throw updateError
 
       if (playersChanged) {
-        const { rounds: gameRounds } = await fetchGameWithRounds(game.id)
+        const { rounds: gameRounds } = await loadGameWithRounds(game.id)
         for (const round of gameRounds) {
           const newScores: Record<string, number> = {}
           for (const [key, value] of Object.entries(round.scores)) {
@@ -144,15 +141,23 @@ export function GameSettingsModal({ game, onClose, onSaved }: Props) {
 
           const newBankoPlayers = remapBankoPlayers(round.banko_players, game, trimmedNames, nameMap)
 
-          await updateRound(round.id, {
+          const keyMap = { ...nameMap }
+          if (esli && newTeams) {
+            getTeams(game).forEach((team, i) => {
+              keyMap[teamLabel(team)] = teamLabel(newTeams[i])
+            })
+          }
+
+          await syncUpdateRound(game.id, round.id, {
             scores: newScores,
+            details: renameDetailsKeys(round.details, keyMap),
             ...(newBankoPlayers ? { banko_players: newBankoPlayers } : {}),
           })
         }
       }
 
       if (data) {
-        const { rounds: r } = await fetchGameWithRounds(game.id)
+        const { rounds: r } = await loadGameWithRounds(game.id)
         loadGame(data, r)
       }
 

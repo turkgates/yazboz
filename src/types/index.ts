@@ -76,6 +76,8 @@ export interface Game {
   settings: GameSettings
   katlamali?: boolean
   banko_history?: Record<string, number[]>
+  live_code?: string | null
+  live_updated_at?: string | null
   created_at: string
   finished_at?: string | null
 }
@@ -92,6 +94,7 @@ export interface Round {
   indicator_players?: string[]
   is_indicator_only?: boolean
   banko_players?: string[]
+  details?: import('@/lib/roundDetails').RoundDetails | null
   created_at: string
 }
 
@@ -176,6 +179,8 @@ export type NotificationType =
   | 'group_left'
   | 'group_removed'
   | 'group_deleted'
+  | 'live_invite'
+  | 'live_finished'
 
 export interface AppNotification {
   id: string
