@@ -88,7 +88,7 @@ export function LiveTableSheet({ game, onClose }: { game: Game; onClose: () => v
           link={link}
           note="Masadakiler QR'ı okutup skoru kendi telefonundan anlık izler."
           shareTitle="Canlı masa"
-          shareText={`Yazboz'da masaya katıl, skoru canlı izle. Masa kodu: ${code}`}
+          shareText={`Okeyif'te masaya katıl, skoru canlı izle. Masa kodu: ${code}`}
         />
       )}
 

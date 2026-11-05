@@ -1,6 +1,6 @@
-# 🎴 Yazboz - Cezalı Okey Skor Takibi
+# Okeyif - Okey Skor Takibi
 
-Türkiye'nin en sevilen kart oyunu Cezalı Okey için dijital yazboz uygulaması.
+Okey için dijital skor takip uygulaması: skoru tut, masayı canlı izle, arkadaşlarınla karşılaştır.
 
 ## Özellikler
 

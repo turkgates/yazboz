@@ -40,7 +40,14 @@ export function ShareCard({
       }}
     >
       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-        <div style={{ fontSize: '28px' }}>🎮</div>
+        {/* html2canvas satır içi SVG'yi güvenilir çizmiyor */}
+        <img
+          src="/pwa-192x192.png"
+          alt="Okeyif"
+          width={40}
+          height={40}
+          style={{ display: 'block', margin: '0 auto' }}
+        />
         <h2
           style={{
             fontSize: '18px',
@@ -49,7 +56,7 @@ export function ShareCard({
             fontWeight: 'bold',
           }}
         >
-          Okey Yazboz
+          Okeyif
         </h2>
         <p style={{ fontSize: '11px', color: '#888', margin: 0 }}>
           {gameTypeLabel} • {gameDate}
@@ -103,7 +110,7 @@ export function ShareCard({
           color: '#555',
         }}
       >
-        okeyyazboz.app
+        Okeyif ile kaydedildi
       </div>
     </div>
   )

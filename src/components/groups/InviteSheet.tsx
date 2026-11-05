@@ -18,7 +18,7 @@ export function InviteSheet({ group, onClose }: { group: Group; onClose: () => v
         link={inviteLink}
         note="QR kodu okutabilir veya davet kodunu paylaşabilirsin."
         shareTitle={`${group.name} grubu`}
-        shareText={`Yazboz'da ${group.name} grubuna katıl. Davet kodu: ${group.invite_code}`}
+        shareText={`Okeyif'te ${group.name} grubuna katıl. Davet kodu: ${group.invite_code}`}
       />
     </EntrySheet>
   )

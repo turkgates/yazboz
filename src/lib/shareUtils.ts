@@ -31,7 +31,7 @@ export async function shareGameResult(
         if (navigator.share && navigator.canShare?.({ files: [file] })) {
           try {
             await navigator.share({
-              title: 'Okey Yazboz Sonucu',
+              title: 'Okeyif Sonucu',
               text: `${winnerName} kazandı! 🏆`,
               files: [file],
             })

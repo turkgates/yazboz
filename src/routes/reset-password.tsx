@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, initialAuthHash, updatePassword } from '@/lib/supabase'
 import { Eye, EyeOff, Lock, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
+import { LogoMark, Wordmark } from '@/components/Logo'
 
 export const Route = createFileRoute('/reset-password')({
   component: ResetPasswordPage,
@@ -66,8 +67,10 @@ function ResetPasswordPage() {
         animate={{ opacity: 1, y: 0 }}
         className="mb-8 text-center"
       >
-        <div className="text-5xl mb-3">🎴</div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Yazboz</h1>
+        <LogoMark size={88} className="mx-auto mb-4" />
+        <h1 className="text-4xl text-white">
+          <Wordmark />
+        </h1>
       </motion.div>
 
       <motion.div
