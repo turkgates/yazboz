@@ -15,11 +15,11 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Yazboz - Cezalı Okey',
-        short_name: 'Yazboz',
-        description: 'Cezalı Okey dijital skor takip uygulaması',
+        name: 'Okeyif - Okey Skor Takibi',
+        short_name: 'Okeyif',
+        description: 'Okey skorunu tut, masayı canlı izle, arkadaşlarınla karşılaştır.',
         theme_color: '#1a1a2e',
         background_color: '#1a1a2e',
         display: 'standalone',
@@ -38,10 +38,10 @@ export default defineConfig({
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'pwa-maskable-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'maskable',
           },
         ],
       },

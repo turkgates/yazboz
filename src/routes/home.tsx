@@ -20,6 +20,7 @@ import { GameResultModal } from '@/components/GameResultModal'
 import { getGameTypeLabel } from '@/lib/gameTypes'
 import { NotificationBell } from '@/components/NotificationBell'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
+import { LogoMark, Wordmark } from '@/components/Logo'
 
 const PAGE_SIZE = 5
 const HOME_GROUP_LIMIT = 3
@@ -184,7 +185,10 @@ function HomePage() {
     <div className="min-h-dvh bg-[#1a1a2e] flex flex-col">
       <div className="bg-[#16213e] border-b border-[#2d3748] px-4 pt-safe-top">
         <div className="flex items-center justify-between py-3 max-w-lg mx-auto">
-          <h1 className="text-xl font-bold text-white">Okey Yazboz</h1>
+          <h1 className="flex items-center gap-2 text-2xl text-white">
+            <LogoMark size={32} />
+            <Wordmark />
+          </h1>
           <div className="flex items-center gap-3">
             <NotificationBell />
             <span className="text-sm text-gray-300 hidden sm:inline">
