@@ -4,15 +4,24 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Trophy } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import { fetchPlayers, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, getSessionUser } from '@/lib/supabase'
-import { loadGameWithRounds, syncInsertRound, syncUpdateGame } from '@/lib/gameSync'
+import { deleteRoundAndRenumber, loadGameWithRounds, syncInsertRound, syncUpdateGame, syncUpdateRound } from '@/lib/gameSync'
 import { build101Details } from '@/lib/roundDetails'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
+import { useViewStore } from '@/stores/viewStore'
 import { getTeams, isEsliGame, teamLabel } from '@/lib/gameTypes'
 import { calculate101Score, compute101Totals, isSpecialFinish } from '@/lib/101calculations'
 import { GameHeader } from '@/components/game/GameHeader'
 import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { OkeyYuzbirRoundEntryModal, type OkeyYuzbirRoundInput } from '@/components/game/OkeyYuzbirRoundEntryModal'
+import {
+  ConfirmDialog,
+  DELETE_REOPENS_HINT,
+  HiddenTotal,
+  ROUND_TAP_HINT,
+  RoundActionSheet,
+  TotalsToggle,
+} from '@/components/game/RoundActions'
 
 function getScoreClass(score: number, isSpecial?: boolean) {
   if (isSpecial) return 'text-[#f5a623]'
@@ -35,6 +44,10 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
   const [showEntry, setShowEntry] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [editingRound, setEditingRound] = useState<Round | null>(null)
+  const [actionRound, setActionRound] = useState<Round | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Round | null>(null)
+  const hideTotals = useViewStore((s) => s.hideTotals)
 
   const refetchGame = async () => {
     const { game: g, rounds: r } = await loadGameWithRounds(gameId)
@@ -70,38 +83,93 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
     [entities.join(','), rounds]
   )
 
-  const prevMaxOpenScore = useMemo((): number | null => {
+  // Düzenlenen elin alt sınırı ondan önceki ellere göre hesaplanır
+  const maxOpenBefore = (beforeIndex: number): number | null => {
     if (!katlamali) return null
-    for (let i = rounds.length - 1; i >= 0; i--) {
+    for (let i = beforeIndex - 1; i >= 0; i--) {
       const s = rounds[i].scores['__maxOpen__']
       if (s !== undefined) return s
     }
     return null
-  }, [rounds, katlamali])
+  }
+
+  const prevMaxOpenScore = useMemo(() => maxOpenBefore(rounds.length), [rounds, katlamali])
 
   const getAvatarUrl = (name: string) =>
     players.find((p) => p.name === name)?.avatar_url ?? null
 
+  const buildScores = (input: OkeyYuzbirRoundInput) => {
+    const scores: Record<string, number> = {}
+    if (esli) {
+      for (const teamArr of teams) {
+        const label = teamLabel(teamArr)
+        const inp = input.playerInputs.find((p) => p.playerName === label)
+        if (inp) scores[label] = calculate101Score(inp)
+      }
+    } else {
+      for (const inp of input.playerInputs) {
+        scores[inp.playerName] = calculate101Score(inp)
+      }
+    }
+
+    if (katlamali && input.maxOpenScore !== undefined) {
+      scores['__maxOpen__'] = input.maxOpenScore
+    }
+    return scores
+  }
+
+  const handleEditSave = async (round: Round, input: OkeyYuzbirRoundInput): Promise<boolean> => {
+    if (!currentGame_) return false
+    const updates = {
+      scores: buildScores(input),
+      details: build101Details(input.playerInputs, katlamali ? input.maxOpenScore : undefined),
+    }
+    const { error } = await syncUpdateRound(gameId, round.id, updates)
+    if (error) {
+      console.error('Round kayıt hatası:', error)
+      alert('El kaydedilemedi: ' + error.message)
+      return false
+    }
+
+    const nextRounds = rounds.map((r) => (r.id === round.id ? { ...r, ...updates } : r))
+    setRounds(nextRounds)
+    loadGame(currentGame_, nextRounds)
+    setEditingRound(null)
+    setShowEntry(false)
+    return true
+  }
+
+  const handleDeleteRound = async (round: Round) => {
+    if (!currentGame_) return
+    setConfirmDelete(null)
+
+    const { rounds: remaining, error } = await deleteRoundAndRenumber(gameId, rounds, round.id)
+    if (error) {
+      console.error('Delete round error:', error)
+      alert('El silinemedi: ' + error.message)
+      return
+    }
+
+    // Biten oyunda el silinirse oyun açılır: el yeniden girilip Bitir'e basılınca tekrar biter
+    if (currentGame_.status === 'finished') {
+      const reopened: Game = { ...currentGame_, status: 'active', finished_at: null }
+      setGame(reopened)
+      setRounds(remaining)
+      loadGame(reopened, remaining)
+      const { error: reopenError } = await syncUpdateGame(gameId, { status: 'active', finished_at: null })
+      if (reopenError) console.error('Reopen game error:', reopenError)
+      return
+    }
+    setRounds(remaining)
+    loadGame(currentGame_, remaining)
+  }
+
   const handleSave = async (input: OkeyYuzbirRoundInput): Promise<boolean> => {
     if (!currentGame_) return false
+    if (editingRound) return handleEditSave(editingRound, input)
     setSaving(true)
     try {
-      const scores: Record<string, number> = {}
-      if (esli) {
-        for (const teamArr of teams) {
-          const label = teamLabel(teamArr)
-          const inp = input.playerInputs.find((p) => p.playerName === label)
-          if (inp) scores[label] = calculate101Score(inp)
-        }
-      } else {
-        for (const inp of input.playerInputs) {
-          scores[inp.playerName] = calculate101Score(inp)
-        }
-      }
-
-      if (katlamali && input.maxOpenScore !== undefined) {
-        scores['__maxOpen__'] = input.maxOpenScore
-      }
+      const scores = buildScores(input)
 
       const roundNumber = rounds.filter((r) => !r.scores['__maxOpen__'] || Object.keys(r.scores).length > 1).length + 1
       const newRound: Omit<Round, 'created_at'> = {
@@ -181,9 +249,13 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
                   ))}
                 </div>
                 <p className="text-[#a0aec0] text-xs font-medium text-center truncate w-full px-1">{entity}</p>
-                <p className={`text-2xl font-black ${getScoreClass(total)}`}>
-                  {total > 0 ? `+${total}` : total}
-                </p>
+                {hideTotals ? (
+                  <HiddenTotal className="text-2xl font-black" />
+                ) : (
+                  <p className={`text-2xl font-black ${getScoreClass(total)}`}>
+                    {total > 0 ? `+${total}` : total}
+                  </p>
+                )}
               </div>
             )
           })}
@@ -205,6 +277,8 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
       {/* Rounds table */}
       <div className="flex-1 px-4 max-w-lg mx-auto w-full pb-28 overflow-x-auto">
         {displayRounds.length > 0 ? (
+          <>
+          <p className="text-[#718096] text-xs text-center mb-1">{ROUND_TAP_HINT}</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#2d3748]">
@@ -218,9 +292,13 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
               {displayRounds.map((round, idx) => {
                 const roundMaxOpen = round.scores['__maxOpen__']
                 return (
-                  <tr key={round.id} className="border-b border-[#2d3748]/50">
+                  <tr
+                    key={round.id}
+                    onClick={() => setActionRound(round)}
+                    className="cursor-pointer border-b border-[#2d3748]/50 active:bg-[#e94560]/10"
+                  >
                     <td className="py-2 text-[#718096] text-xs">
-                      <div>{idx + 1}</div>
+                      <button type="button" aria-label={`${idx + 1}. el`} className="block">{idx + 1}</button>
                       {katlamali && roundMaxOpen !== undefined && (
                         <div className="text-[9px] text-[#f5a623]">min.{roundMaxOpen + 1}</div>
                       )}
@@ -241,20 +319,27 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
               })}
               {/* Total row */}
               <tr className="border-t-2 border-[#4a5568]">
-                <td className="py-2 text-[#a0aec0] text-xs font-bold">TOP.</td>
+                <td className="py-1">
+                  <TotalsToggle />
+                </td>
                 {entities.map((entity) => {
                   const total = totals[entity] ?? 0
                   return (
                     <td key={entity} className="text-center py-2">
-                      <span className={`font-black text-sm ${getScoreClass(total)}`}>
-                        {total > 0 ? `+${total}` : total}
-                      </span>
+                      {hideTotals ? (
+                        <HiddenTotal className="text-sm" />
+                      ) : (
+                        <span className={`font-black text-sm ${getScoreClass(total)}`}>
+                          {total > 0 ? `+${total}` : total}
+                        </span>
+                      )}
                     </td>
                   )
                 })}
               </tr>
             </tbody>
           </table>
+          </>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-[#4a5568]">
             <p className="text-sm">Henüz el girilmedi</p>
@@ -336,16 +421,57 @@ export function OkeyYuzbirGameView({ gameId }: Props) {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {actionRound && (
+          <RoundActionSheet
+            roundNumber={displayRounds.findIndex((r) => r.id === actionRound.id) + 1}
+            onEdit={() => {
+              setEditingRound(actionRound)
+              setShowEntry(true)
+              setActionRound(null)
+            }}
+            onDelete={() => {
+              setConfirmDelete(actionRound)
+              setActionRound(null)
+            }}
+            onClose={() => setActionRound(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDelete && (
+          <ConfirmDialog
+            message={`${displayRounds.findIndex((r) => r.id === confirmDelete.id) + 1}. eli silmek istediğinizden emin misiniz?`}
+            detail={isFinished ? DELETE_REOPENS_HINT : undefined}
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => handleDeleteRound(confirmDelete)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Round entry modal */}
       <AnimatePresence>
         {showEntry && (
           <OkeyYuzbirRoundEntryModal
             game={currentGame_}
-            roundNumber={displayRounds.length + 1}
+            roundNumber={
+              editingRound
+                ? displayRounds.findIndex((r) => r.id === editingRound.id) + 1
+                : displayRounds.length + 1
+            }
             katlamali={katlamali}
-            prevMaxOpenScore={prevMaxOpenScore}
+            prevMaxOpenScore={
+              editingRound
+                ? maxOpenBefore(rounds.findIndex((r) => r.id === editingRound.id))
+                : prevMaxOpenScore
+            }
+            editingRound={editingRound}
             onSave={handleSave}
-            onClose={() => setShowEntry(false)}
+            onClose={() => {
+              setShowEntry(false)
+              setEditingRound(null)
+            }}
           />
         )}
       </AnimatePresence>

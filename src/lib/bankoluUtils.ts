@@ -40,6 +40,21 @@ export function applyBankoToHistory(
   return next
 }
 
+// Silinen eldeki banko hakkı geri verilir, sonraki ellerin numarası bir azalır
+export function removeRoundFromBankoHistory(
+  history: BankoHistory,
+  roundNumber: number
+): BankoHistory {
+  const next: BankoHistory = {}
+  for (const [entity, list] of Object.entries(history)) {
+    const shifted = list
+      .filter((n) => n !== roundNumber)
+      .map((n) => (n > roundNumber ? n - 1 : n))
+    if (shifted.length > 0) next[entity] = shifted
+  }
+  return next
+}
+
 export function getForcedBankos(
   game: Game,
   currentRound: number

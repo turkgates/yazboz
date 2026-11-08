@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
+import { Trophy } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import { isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE } from '@/lib/supabase'
-import { loadGameWithRounds, syncInsertRound, syncUpdateGame } from '@/lib/gameSync'
+import { deleteRoundAndRenumber, loadGameWithRounds, syncInsertRound, syncUpdateGame, syncUpdateRound } from '@/lib/gameSync'
 import { buildSayiliDetails } from '@/lib/roundDetails'
 import { useGameStore } from '@/stores/gameStore'
-import type { SayiliOkeySettings } from '@/types'
+import type { Round, SayiliOkeySettings } from '@/types'
 import {
   computeSayiliCurrentScores,
   getIndicatorUsedThisEl,
@@ -17,6 +18,12 @@ import {
   type SayiliFinishType,
 } from '@/lib/gameTypes'
 import { GameHeader } from '@/components/game/GameHeader'
+import {
+  ConfirmDialog,
+  DELETE_REOPENS_HINT,
+  ROUND_TAP_HINT,
+  RoundActionSheet,
+} from '@/components/game/RoundActions'
 
 interface SayiliGameViewProps {
   gameId: string
@@ -37,6 +44,9 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
   const [finishTarget, setFinishTarget] = useState<string | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [actionRound, setActionRound] = useState<Round | null>(null)
+  const [editTarget, setEditTarget] = useState<Round | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Round | null>(null)
 
   const game = currentGame
   const settings = (game?.settings ?? {}) as SayiliOkeySettings
@@ -152,6 +162,51 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
     await saveRound(finishTarget, finishValue, { isIndicatorOnly: false, finishType: type })
   }
 
+  const someoneFinished = (scores: Record<string, number>) =>
+    Object.values(scores).some((s) => s <= 0)
+
+  const handleEditFinish = async (round: Round, entity: string, type: SayiliFinishType) => {
+    setEditTarget(null)
+    const drop = getSayiliFinishValue(settings, type)
+    const scores: Record<string, number> = {}
+    for (const e of entities) scores[e] = 0
+    scores[entity] = -drop
+    const updates = { scores, details: buildSayiliDetails(entity, drop, type) }
+
+    setSaving(true)
+    const { error } = await syncUpdateRound(gameId, round.id, updates)
+    setSaving(false)
+    if (error) {
+      alert('El kaydedilemedi: ' + error.message)
+      return
+    }
+
+    const nextRounds = rounds.map((r) => (r.id === round.id ? { ...r, ...updates } : r))
+    loadGame(game, nextRounds)
+    if (!isFinished) checkAutoFinish(computeSayiliCurrentScores(game, nextRounds))
+  }
+
+  const handleDeleteRound = async (round: Round) => {
+    setConfirmDelete(null)
+    const { rounds: remaining, error } = await deleteRoundAndRenumber(gameId, rounds, round.id)
+    if (error) {
+      alert('El silinemedi: ' + error.message)
+      return
+    }
+
+    // Biten oyunda sıfıra inen kalmadıysa oyun açılır
+    if (isFinished && !someoneFinished(computeSayiliCurrentScores(game, remaining))) {
+      loadGame({ ...game, status: 'active', finished_at: null }, remaining)
+      const { error: reopenError } = await syncUpdateGame(gameId, { status: 'active', finished_at: null })
+      if (reopenError) console.error('Reopen game error:', reopenError)
+      return
+    }
+    loadGame(game, remaining)
+  }
+
+  const finishedEntity = (round: Round) =>
+    entities.find((e) => (round.scores[e] ?? 0) !== 0) ?? entities[0]
+
   const handleManualEnd = async () => {
     setConfirmEnd(false)
     await finishGameAndNavigate()
@@ -169,7 +224,10 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
         onEndGame={() => setConfirmEnd(true)}
       />
 
-      <div className="flex-1 overflow-auto px-3 py-3 max-w-lg mx-auto w-full">
+      <div className={`flex-1 overflow-auto px-3 py-3 max-w-lg mx-auto w-full ${isFinished ? 'pb-28' : ''}`}>
+        {rounds.length > 0 && (
+          <p className="text-[#718096] text-xs text-center mb-2">{ROUND_TAP_HINT}</p>
+        )}
         <div className="bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden">
           <div className={`grid ${gridCols} border-b border-[#2d3748] bg-[#0f3460] p-3 gap-2`}>
             {entities.map((entity) => {
@@ -215,9 +273,12 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
           </div>
 
           {rounds.map((round) => (
-            <div
+            <button
+              type="button"
               key={round.id}
-              className={`flex border-b border-[#2d3748]/40 ${
+              onClick={() => setActionRound(round)}
+              aria-label={round.is_indicator_only ? 'Gösterge' : `${round.round_number}. el`}
+              className={`w-full flex text-left border-b border-[#2d3748]/40 active:bg-[#e94560]/10 ${
                 round.is_indicator_only ? 'bg-[#f5a623]/5' : ''
               }`}
             >
@@ -241,10 +302,22 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
                   </div>
                 )
               })}
-            </div>
+            </button>
           ))}
         </div>
       </div>
+
+      {isFinished && (
+        <div className="fixed bottom-0 left-0 right-0 bg-[#16213e] border-t border-[#2d3748] px-4 py-3 pb-safe">
+          <button
+            onClick={() => navigate({ to: '/game-over/$gameId', params: { gameId } })}
+            className="w-full flex items-center justify-center gap-2 bg-[#f5a623] text-[#1a1a2e] font-bold py-3.5 rounded-xl max-w-lg mx-auto"
+          >
+            <Trophy size={18} />
+            Sonuçları Gör
+          </button>
+        </div>
+      )}
 
       <AnimatePresence>
         {finishTarget && (
@@ -252,6 +325,52 @@ export function SayiliGameView({ gameId }: SayiliGameViewProps) {
             settings={settings}
             onSelect={handleFinishSelect}
             onClose={() => setFinishTarget(null)}
+          />
+        )}
+        {actionRound && (
+          <RoundActionSheet
+            roundNumber={actionRound.round_number}
+            title={actionRound.is_indicator_only ? `Gösterge · ${finishedEntity(actionRound)}` : undefined}
+            onEdit={
+              actionRound.is_indicator_only
+                ? undefined
+                : () => {
+                    setEditTarget(actionRound)
+                    setActionRound(null)
+                  }
+            }
+            onDelete={() => {
+              setConfirmDelete(actionRound)
+              setActionRound(null)
+            }}
+            onClose={() => setActionRound(null)}
+          />
+        )}
+        {editTarget && (
+          <FinishTypeModal
+            settings={settings}
+            entities={entities}
+            initialEntity={finishedEntity(editTarget)}
+            initialType={editTarget.details?.kind === 'sayili'
+              ? editTarget.details.players[finishedEntity(editTarget)]?.finish
+              : undefined}
+            onSelect={(type, entity) => handleEditFinish(editTarget, entity ?? finishedEntity(editTarget), type)}
+            onClose={() => setEditTarget(null)}
+          />
+        )}
+        {confirmDelete && (
+          <ConfirmDialog
+            message={confirmDelete.is_indicator_only
+              ? 'Bu göstergeyi silmek istediğinizden emin misiniz?'
+              : `${confirmDelete.round_number}. eli silmek istediğinizden emin misiniz?`}
+            detail={
+              isFinished &&
+              !someoneFinished(computeSayiliCurrentScores(game, rounds.filter((r) => r.id !== confirmDelete.id)))
+                ? DELETE_REOPENS_HINT
+                : undefined
+            }
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => handleDeleteRound(confirmDelete)}
           />
         )}
         {confirmEnd && (
@@ -269,17 +388,26 @@ function FinishTypeModal({
   settings,
   onSelect,
   onClose,
+  entities,
+  initialEntity,
+  initialType,
 }: {
   settings: SayiliOkeySettings
-  onSelect: (type: SayiliFinishType) => void
+  onSelect: (type: SayiliFinishType, entity?: string) => void
   onClose: () => void
+  // Düzenlemede kimin bittiği de değiştirilebilir
+  entities?: string[]
+  initialEntity?: string
+  initialType?: SayiliFinishType
 }) {
+  const [entity, setEntity] = useState(initialEntity)
+
   // Kapanış animasyonu sırasında ikinci basış aynı eli yeniden göndermesin
   const selectedRef = useRef(false)
   const handleSelect = (type: SayiliFinishType) => {
     if (selectedRef.current) return
     selectedRef.current = true
-    onSelect(type)
+    onSelect(type, entity)
   }
 
   const options: { type: SayiliFinishType; label: string; value: number }[] = [
@@ -305,14 +433,38 @@ function FinishTypeModal({
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-lg bg-[#16213e] rounded-t-3xl border-t border-x border-[#2d3748] safe-bottom p-5"
       >
-        <h3 className="text-white font-bold mb-4">Bitiş Tipi</h3>
+        <h3 className="text-white font-bold mb-4">{entities ? 'Eli Düzenle' : 'Bitiş Tipi'}</h3>
+        {entities && (
+          <div className="mb-4">
+            <p className="text-[#a0aec0] text-xs mb-2">Kim bitti?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {entities.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => setEntity(e)}
+                  className={`py-2.5 px-3 rounded-xl text-sm font-semibold truncate border ${
+                    entity === e
+                      ? 'bg-green-600/20 border-green-500 text-white'
+                      : 'bg-[#0f3460] border-[#2d3748] text-[#a0aec0]'
+                  }`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <p className="text-[#a0aec0] text-xs mt-4">Nasıl bitti?</p>
+          </div>
+        )}
         <div className="flex flex-col gap-2">
           {options.map((opt) => (
             <button
               key={opt.type}
               type="button"
               onClick={() => handleSelect(opt.type)}
-              className="w-full bg-[#0f3460] hover:bg-[#1a4a7a] text-white font-semibold py-3.5 rounded-xl text-left px-4"
+              className={`w-full bg-[#0f3460] hover:bg-[#1a4a7a] text-white font-semibold py-3.5 rounded-xl text-left px-4 ${
+                initialType === opt.type ? 'ring-2 ring-green-500' : ''
+              }`}
             >
               {opt.label} (-{opt.value})
             </button>

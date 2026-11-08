@@ -179,6 +179,32 @@ export function syncDeleteRound(gameId: string, roundId: string) {
   return runOrQueue<null>(op, () => null)
 }
 
+// Silinen elden sonrakiler bir numara yukarı kayar, tabloda boşluk kalmaz.
+// Küçükten büyüğe gidildiği için her numara bir önceki adımda boşalmış olur.
+export async function deleteRoundAndRenumber(
+  gameId: string,
+  rounds: Round[],
+  roundId: string
+): Promise<{ rounds: Round[]; error: SyncError | null }> {
+  const { error } = await syncDeleteRound(gameId, roundId)
+  if (error) return { rounds, error }
+
+  const remaining = rounds
+    .filter((r) => r.id !== roundId)
+    .sort((a, b) => a.round_number - b.round_number)
+
+  const renumbered: Round[] = []
+  for (const [index, round] of remaining.entries()) {
+    const roundNumber = index + 1
+    if (round.round_number !== roundNumber) {
+      const { error: renumberError } = await syncUpdateRound(gameId, round.id, { round_number: roundNumber })
+      if (renumberError) console.error('El numarası güncellenemedi:', renumberError)
+    }
+    renumbered.push({ ...round, round_number: roundNumber })
+  }
+  return { rounds: renumbered, error: null }
+}
+
 // Kuyruktaki el numarası başka kayıtla çakıştıysa veri kaybetmemek için sona eklenir
 async function resolveDuplicateRound(op: Extract<QueuedOp, { type: 'round_insert' }>) {
   const { data: same } = await supabase

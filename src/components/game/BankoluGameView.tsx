@@ -4,9 +4,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Trophy } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import { fetchPlayers, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, getSessionUser } from '@/lib/supabase'
-import { loadGameWithRounds, syncInsertRound, syncUpdateGame } from '@/lib/gameSync'
+import { deleteRoundAndRenumber, loadGameWithRounds, syncInsertRound, syncUpdateGame, syncUpdateRound } from '@/lib/gameSync'
 import type { Game, Round, SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
+import { useViewStore } from '@/stores/viewStore'
 import {
   computeCezaliTeamTotals,
   getTeams,
@@ -20,6 +21,7 @@ import {
   getBankoHistory,
   getForcedBankos,
   mustForceBanko,
+  removeRoundFromBankoHistory,
 } from '@/lib/bankoluUtils'
 import { GameHeader } from '@/components/game/GameHeader'
 import { GameSettingsModal } from '@/components/game/GameSettingsModal'
@@ -28,6 +30,14 @@ import {
   BankoluRoundEntryModal,
   type BankoluRoundSavePayload,
 } from '@/components/game/BankoluRoundEntryModal'
+import {
+  ConfirmDialog,
+  DELETE_REOPENS_HINT,
+  HiddenTotal,
+  ROUND_TAP_HINT,
+  RoundActionSheet,
+  TotalsToggle,
+} from '@/components/game/RoundActions'
 
 interface Props {
   gameId: string
@@ -45,6 +55,10 @@ export function BankoluGameView({ gameId }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [editingRound, setEditingRound] = useState<Round | null>(null)
+  const [actionRound, setActionRound] = useState<Round | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Round | null>(null)
+  const hideTotals = useViewStore((s) => s.hideTotals)
 
   const refetchGame = async () => {
     const { game: g, rounds: r } = await loadGameWithRounds(gameId)
@@ -111,8 +125,63 @@ export function BankoluGameView({ gameId }: Props) {
     )
   }
 
+  // Bankocular elin kendisinde kayıtlıdır: düzenlemede değişmez, banko geçmişi de aynı kalır
+  const handleEditSave = async (round: Round, payload: BankoluRoundSavePayload): Promise<boolean> => {
+    if (!currentGame_) return false
+    const updates = {
+      color: payload.color,
+      okey_thrown: payload.okeyThrown,
+      double_finish: payload.doubleFinish,
+      fake_okey: payload.fakeOkey,
+      scores: payload.scores,
+      details: payload.details,
+    }
+    const { error } = await syncUpdateRound(gameId, round.id, updates)
+    if (error) {
+      console.error('Round kayıt hatası:', error)
+      alert('El kaydedilemedi: ' + error.message)
+      return false
+    }
+
+    const nextRounds = rounds.map((r) => (r.id === round.id ? { ...r, ...updates } : r))
+    setRounds(nextRounds)
+    loadGame(currentGame_, nextRounds)
+    setEditingRound(null)
+    setShowEntry(false)
+    return true
+  }
+
+  const handleDeleteRound = async (round: Round) => {
+    if (!currentGame_) return
+    setConfirmDelete(null)
+
+    const { rounds: remaining, error } = await deleteRoundAndRenumber(gameId, rounds, round.id)
+    if (error) {
+      console.error('Delete round error:', error)
+      alert('El silinemedi: ' + error.message)
+      return
+    }
+
+    const newHistory = removeRoundFromBankoHistory(bankoHistory, round.round_number)
+    // Biten oyunda el silinirse oyun açılır: el yeniden girilince ya da Bitir'e basılınca tekrar biter
+    const reopen = currentGame_.status === 'finished'
+    const updates = reopen
+      ? { banko_history: newHistory, status: 'active' as const, finished_at: null }
+      : { banko_history: newHistory }
+    const updatedGame: Game = { ...currentGame_, ...updates }
+
+    setRounds(remaining)
+    setGame(updatedGame)
+    loadGame(updatedGame, remaining)
+    // Son el için zorla seçilen bankolar artık geçerli değil: yeni ele göre yeniden seçilir
+    setCurrentBankos([])
+    const { error: updateError } = await syncUpdateGame(gameId, updates)
+    if (updateError) console.error('Banko history update error:', updateError)
+  }
+
   const handleSave = async (payload: BankoluRoundSavePayload): Promise<boolean> => {
     if (!currentGame_) return false
+    if (editingRound) return handleEditSave(editingRound, payload)
     setSaving(true)
     try {
       const roundNumber = rounds.length + 1
@@ -205,6 +274,9 @@ export function BankoluGameView({ gameId }: Props) {
       />
 
       <div className="flex-1 overflow-auto px-2 py-3 max-w-lg mx-auto w-full pb-28">
+        {rounds.length > 0 && (
+          <p className="text-[#718096] text-xs text-center mb-2">{ROUND_TAP_HINT}</p>
+        )}
         <div className="bg-[#16213e] rounded-2xl border border-[#2d3748] overflow-hidden w-full">
           <table className="w-full table-fixed border-collapse">
             <colgroup>
@@ -272,10 +344,13 @@ export function BankoluGameView({ gameId }: Props) {
               {rounds.map((round, idx) => (
                 <tr
                   key={round.id}
-                  className={`border-b border-[#2d3748]/50 ${idx % 2 !== 0 ? 'bg-[#0f3460]/20' : ''}`}
+                  onClick={() => setActionRound(round)}
+                  className={`cursor-pointer border-b border-[#2d3748]/50 active:bg-[#e94560]/10 ${idx % 2 !== 0 ? 'bg-[#0f3460]/20' : ''}`}
                 >
                   <td className="text-center p-2">
-                    <span className="text-[#718096] text-xs">{round.round_number}</span>
+                    <button type="button" aria-label={`${round.round_number}. el`} className="text-[#718096] text-xs w-full">
+                      {round.round_number}
+                    </button>
                   </td>
                   {tableColumns.map((entity) => {
                     const score = round.scores[entity] ?? 0
@@ -321,14 +396,20 @@ export function BankoluGameView({ gameId }: Props) {
 
             <tfoot>
               <tr className="bg-[#0f3460] border-t-2 border-[#2d3748]">
-                <td className="p-2" />
+                <td className="p-1">
+                  <TotalsToggle className="mx-auto" />
+                </td>
                 {tableColumns.map((entity) => {
                   const total = totals[entity] ?? 0
                   return (
                     <td key={entity} className="text-center p-2 font-bold">
-                      <span className={`text-sm ${scoreClass(total)}`}>
-                        {total}
-                      </span>
+                      {hideTotals ? (
+                        <HiddenTotal className="text-sm" />
+                      ) : (
+                        <span className={`text-sm ${scoreClass(total)}`}>
+                          {total}
+                        </span>
+                      )}
                     </td>
                   )
                 })}
@@ -358,6 +439,47 @@ export function BankoluGameView({ gameId }: Props) {
           )}
         </div>
       )}
+
+      {isFinished && (
+        <div className="fixed bottom-0 left-0 right-0 bg-[#16213e] border-t border-[#2d3748] px-4 py-3 pb-safe">
+          <button
+            onClick={() => navigate({ to: '/game-over/$gameId', params: { gameId } })}
+            className="w-full flex items-center justify-center gap-2 bg-[#f5a623] text-[#1a1a2e] font-bold py-3.5 rounded-xl max-w-lg mx-auto"
+          >
+            <Trophy size={18} />
+            Sonuçları Gör
+          </button>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {actionRound && (
+          <RoundActionSheet
+            roundNumber={actionRound.round_number}
+            onEdit={() => {
+              setEditingRound(actionRound)
+              setShowEntry(true)
+              setActionRound(null)
+            }}
+            onDelete={() => {
+              setConfirmDelete(actionRound)
+              setActionRound(null)
+            }}
+            onClose={() => setActionRound(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDelete && (
+          <ConfirmDialog
+            message={`${confirmDelete.round_number}. eli silmek istediğinizden emin misiniz?`}
+            detail={isFinished ? DELETE_REOPENS_HINT : undefined}
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => handleDeleteRound(confirmDelete)}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showEndConfirm && (
@@ -401,9 +523,13 @@ export function BankoluGameView({ gameId }: Props) {
           <BankoluRoundEntryModal
             game={currentGame_}
             roundNumber={currentRound}
-            currentBankos={currentBankos}
+            currentBankos={editingRound ? (editingRound.banko_players ?? []) : currentBankos}
+            editingRound={editingRound}
             onSave={handleSave}
-            onClose={() => setShowEntry(false)}
+            onClose={() => {
+              setShowEntry(false)
+              setEditingRound(null)
+            }}
           />
         )}
       </AnimatePresence>

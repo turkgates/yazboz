@@ -1,13 +1,16 @@
 import type { Round } from '@/types'
 import { teamLabel } from '@/lib/gameTypes'
+import { HiddenTotal, TotalsToggle } from '@/components/game/RoundActions'
 
 interface TeamScoreTableProps {
   teams: string[][]
   rounds: Round[]
   teamTotals: Record<string, number>
+  hideTotals: boolean
+  onRoundTap: (round: Round) => void
 }
 
-export function TeamScoreTable({ teams, rounds, teamTotals }: TeamScoreTableProps) {
+export function TeamScoreTable({ teams, rounds, teamTotals, hideTotals, onRoundTap }: TeamScoreTableProps) {
   const labels = teams.map(teamLabel)
 
   const teamRoundScore = (round: Round, label: string, team: string[]) =>
@@ -27,9 +30,12 @@ export function TeamScoreTable({ teams, rounds, teamTotals }: TeamScoreTableProp
       </div>
 
       {rounds.map((round, idx) => (
-        <div
+        <button
+          type="button"
           key={round.id}
-          className={`flex border-b border-[#2d3748]/50 ${idx % 2 !== 0 ? 'bg-[#0f3460]/20' : ''}`}
+          onClick={() => onRoundTap(round)}
+          aria-label={`${round.round_number}. el`}
+          className={`w-full flex text-left border-b border-[#2d3748]/50 active:bg-[#e94560]/10 ${idx % 2 !== 0 ? 'bg-[#0f3460]/20' : ''}`}
         >
           <div className="w-10 shrink-0 flex items-center justify-center">
             <span className="text-[#718096] text-xs">{round.round_number}</span>
@@ -48,22 +54,28 @@ export function TeamScoreTable({ teams, rounds, teamTotals }: TeamScoreTableProp
               </div>
             )
           })}
-        </div>
+        </button>
       ))}
 
-      <div className="flex bg-[#0f3460] border-t-2 border-[#2d3748]">
-        <div className="w-10 shrink-0" />
+      <div className="flex items-center bg-[#0f3460] border-t-2 border-[#2d3748]">
+        <div className="w-10 shrink-0 flex items-center justify-center">
+          <TotalsToggle />
+        </div>
         {labels.map((label) => {
           const total = teamTotals[label] ?? 0
           return (
             <div key={label} className="flex-1 py-3 px-1 text-center">
-              <p
-                className={`text-sm font-bold ${
-                  total < 0 ? 'text-green-400' : total > 0 ? 'text-red-400' : 'text-white'
-                }`}
-              >
-                {total}
-              </p>
+              {hideTotals ? (
+                <HiddenTotal className="text-sm" />
+              ) : (
+                <p
+                  className={`text-sm font-bold ${
+                    total < 0 ? 'text-green-400' : total > 0 ? 'text-red-400' : 'text-white'
+                  }`}
+                >
+                  {total}
+                </p>
+              )}
             </div>
           )
         })}
