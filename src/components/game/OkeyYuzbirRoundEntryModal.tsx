@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSaveLock } from '@/hooks/useSaveLock'
-import type { Game } from '@/types'
+import type { Game, Round } from '@/types'
 import { getTeams, isEsliGame, teamLabel } from '@/lib/gameTypes'
 import {
   type OkeyYuzbirFinishType,
@@ -31,6 +31,7 @@ interface Props {
   roundNumber: number
   katlamali: boolean
   prevMaxOpenScore: number | null
+  editingRound?: Round | null
   onSave: (input: OkeyYuzbirRoundInput) => Promise<boolean>
   onClose: () => void
 }
@@ -54,6 +55,7 @@ export function OkeyYuzbirRoundEntryModal({
   roundNumber,
   katlamali,
   prevMaxOpenScore,
+  editingRound,
   onSave,
   onClose,
 }: Props) {
@@ -80,6 +82,30 @@ export function OkeyYuzbirRoundEntryModal({
     }
     setPlayerStates(init)
   }, [entities.join(',')])
+
+  useEffect(() => {
+    const details = editingRound?.details?.kind === '101' ? editingRound.details : null
+    if (!details) return
+
+    const states: Record<string, PlayerState> = {}
+    let winner: string | null = null
+    for (const e of entities) {
+      const entry = details.players[e]
+      if (entry?.winner) {
+        winner = e
+        if (entry.finish) setFinishType(entry.finish)
+      }
+      states[e] = {
+        hasOpened: entry?.opened ?? false,
+        tileSum: entry?.tile_sum !== undefined ? String(entry.tile_sum) : '',
+        wrongOpen: entry?.wrong_open ?? false,
+        okeyInHand: entry?.okey_in_hand ?? false,
+      }
+    }
+    setPlayerStates(states)
+    setWinnerEntity(winner)
+    if (details.max_open !== undefined) setMaxOpenScore(String(details.max_open))
+  }, [editingRound?.id, entities.join(',')])
 
   const setPlayerState = (entity: string, updates: Partial<PlayerState>) => {
     setPlayerStates((prev) => ({ ...prev, [entity]: { ...prev[entity], ...updates } }))
@@ -142,7 +168,7 @@ export function OkeyYuzbirRoundEntryModal({
 
   return (
     <EntrySheet
-      title={`${roundNumber}. El`}
+      title={editingRound ? `${roundNumber}. El · Düzenle` : `${roundNumber}. El`}
       onClose={handleClose}
       footer={<SaveButton saving={saving} missing={winnerEntity ? null : (esli ? 'Biten takımı seç' : 'Biten oyuncuyu seç')} onClick={handleSave} />}
     >

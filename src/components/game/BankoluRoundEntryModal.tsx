@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSaveLock } from '@/hooks/useSaveLock'
 import { buildBankoluDetails, type BankoluRoundDetails } from '@/lib/roundDetails'
-import type { Color, Game } from '@/types'
+import type { Color, Game, Round } from '@/types'
 import { getTeams, isBankoluEsli, teamLabel } from '@/lib/gameTypes'
 import { playerIsBanko } from '@/lib/bankoluUtils'
 import {
@@ -35,6 +35,7 @@ interface Props {
   game: Game
   roundNumber: number
   currentBankos: string[]
+  editingRound?: Round | null
   onSave: (payload: BankoluRoundSavePayload) => Promise<boolean>
   onClose: () => void
 }
@@ -45,6 +46,7 @@ export function BankoluRoundEntryModal({
   game,
   roundNumber,
   currentBankos,
+  editingRound,
   onSave,
   onClose,
 }: Props) {
@@ -83,6 +85,35 @@ export function BankoluRoundEntryModal({
     setDoubleFinish(false)
     setWinnerTeam(null)
   }, [game.players.join(','), roundNumber])
+
+  useEffect(() => {
+    if (!editingRound) return
+    setFakeOkey(editingRound.fake_okey ?? false)
+    setColor(editingRound.fake_okey ? null : editingRound.color)
+    setOkeyThrown(editingRound.okey_thrown)
+    setDoubleFinish(editingRound.double_finish)
+
+    // Ham girişi olmayan eski ellerde yalnızca renk ve bitiş bilgisi doldurulur
+    const details = editingRound.details?.kind === 'bankolu' ? editingRound.details : null
+    if (!details) return
+
+    const statuses: Record<string, PlayerUIStatus> = {}
+    const pts: Record<string, string> = {}
+    const openers: Record<string, boolean> = {}
+    for (const p of game.players) {
+      const entry = details.players[p]
+      statuses[p] = entry?.burned ? 'okey_burned' : !esli && entry?.winner ? 'winner' : 'normal'
+      pts[p] = entry && !entry.winner && entry.raw ? String(entry.raw) : ''
+      openers[p] = entry?.fake_opener ?? false
+    }
+    setPlayerStatuses(statuses)
+    setRawPoints(pts)
+    setFakeOpeners(openers)
+    if (esli) {
+      const team = teams.find((t) => t.some((p) => details.players[p]?.winner))
+      setWinnerTeam(team ? teamLabel(team) : null)
+    }
+  }, [editingRound?.id])
 
   const bankoluColor = (): BankoluColor => {
     if (fakeOkey) return 'fake'
@@ -212,7 +243,7 @@ export function BankoluRoundEntryModal({
 
   return (
     <EntrySheet
-      title={`${roundNumber}. El`}
+      title={editingRound ? `${editingRound.round_number}. El · Düzenle` : `${roundNumber}. El`}
       onClose={handleClose}
       footer={<SaveButton saving={saving} missing={missing} onClick={handleSave} />}
     >

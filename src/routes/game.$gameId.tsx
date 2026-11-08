@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate, redirect } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { fetchPlayers, isDuplicateRoundError, DUPLICATE_ROUND_MESSAGE, getSessionUser, getLocalSession } from '@/lib/supabase'
 import {
+  deleteRoundAndRenumber,
   loadGameWithRounds,
-  syncDeleteRound,
   syncInsertRound,
   syncUpdateGame,
   syncUpdateRound,
@@ -12,6 +12,7 @@ import {
 import { buildCezaliDetails } from '@/lib/roundDetails'
 import type { SavedPlayer } from '@/types'
 import { useGameStore } from '@/stores/gameStore'
+import { useViewStore } from '@/stores/viewStore'
 import { Plus, MoreVertical } from 'lucide-react'
 import type { Game, RoundInput, Round } from '@/types'
 import { calculateAllScores } from '@/lib/calculations'
@@ -21,6 +22,14 @@ import { PlayerAvatar } from '@/components/PlayerAvatar'
 import { GameHeader } from '@/components/game/GameHeader'
 import { GameSettingsModal } from '@/components/game/GameSettingsModal'
 import { TeamScoreTable } from '@/components/game/TeamScoreTable'
+import {
+  ConfirmDialog,
+  DELETE_REOPENS_HINT,
+  HiddenTotal,
+  ROUND_TAP_HINT,
+  RoundActionSheet,
+  TotalsToggle,
+} from '@/components/game/RoundActions'
 import { SayiliGameView } from '@/components/game/SayiliGameView'
 import { OkeyYuzbirGameView } from '@/components/game/OkeyYuzbirGameView'
 import { BankoluGameView } from '@/components/game/BankoluGameView'
@@ -44,7 +53,6 @@ function GamePage() {
     loadGame,
     appendRound,
     updateRoundInStore,
-    deleteRoundInStore,
     finishGame,
     isGameFinished,
   } = useGameStore()
@@ -52,8 +60,9 @@ function GamePage() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingRound, setEditingRound] = useState<Round | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [actionRound, setActionRound] = useState<Round | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Round | null>(null)
+  const hideTotals = useViewStore((s) => s.hideTotals)
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>([])
   const [showSettings, setShowSettings] = useState(false)
 
@@ -167,37 +176,31 @@ function GamePage() {
     return true
   }
 
-  const handleDeleteRound = async (roundId: string) => {
+  const handleDeleteRound = async (round: Round) => {
     if (!currentGame) return
+    setConfirmDelete(null)
 
-    const previousNumbers = new Map(rounds.map((r) => [r.id, r.round_number]))
-
-    deleteRoundInStore(roundId)
-    setConfirmDeleteId(null)
-    setOpenMenuId(null)
-
-    const updatedRounds = useGameStore.getState().rounds
-
-    const { error } = await syncDeleteRound(gameId, roundId)
-    if (error) console.error('Delete round error:', error)
-    for (const round of updatedRounds) {
-      if (previousNumbers.get(round.id) !== round.round_number) {
-        await syncUpdateRound(gameId, round.id, { round_number: round.round_number })
-      }
+    const { rounds: remaining, error } = await deleteRoundAndRenumber(gameId, rounds, round.id)
+    if (error) {
+      console.error('Delete round error:', error)
+      alert('El silinemedi: ' + error.message)
+      return
     }
 
-    if (currentGame.status === 'finished' && updatedRounds.length < currentGame.total_rounds) {
-      const reopenedGame = { ...currentGame, status: 'active' as const, finished_at: null }
-      loadGame(reopenedGame, updatedRounds)
+    // Biten oyunda el silinirse oyun açılır: el yeniden girilince tekrar biter
+    if (currentGame.status === 'finished') {
+      loadGame({ ...currentGame, status: 'active', finished_at: null }, remaining)
       const { error: reopenError } = await syncUpdateGame(gameId, { status: 'active', finished_at: null })
       if (reopenError) console.error('Reopen game error:', reopenError)
+      return
     }
+    loadGame(currentGame, remaining)
   }
 
   const openEditModal = (round: Round) => {
     setEditingRound(round)
     setShowModal(true)
-    setOpenMenuId(null)
+    setActionRound(null)
   }
 
   const openNewModal = () => {
@@ -269,11 +272,16 @@ function GamePage() {
       />
 
       <div className="flex-1 overflow-auto px-2 py-3 max-w-lg mx-auto w-full">
+        {rounds.length > 0 && (
+          <p className="text-[#718096] text-xs text-center mb-2">{ROUND_TAP_HINT}</p>
+        )}
         {isEsli ? (
           <TeamScoreTable
             teams={teams}
             rounds={rounds}
             teamTotals={teamTotals}
+            hideTotals={hideTotals}
+            onRoundTap={setActionRound}
           />
         ) : (
           <ScoreTable
@@ -283,14 +291,8 @@ function GamePage() {
             currentRound={currentRound}
             totalRounds={currentGame.total_rounds}
             savedPlayers={savedPlayers}
-            readOnly={isFinished}
-            openMenuId={openMenuId}
-            onMenuToggle={setOpenMenuId}
-            onEdit={openEditModal}
-            onDelete={(id) => {
-              setConfirmDeleteId(id)
-              setOpenMenuId(null)
-            }}
+            hideTotals={hideTotals}
+            onRoundTap={setActionRound}
           />
         )}
       </div>
@@ -308,7 +310,7 @@ function GamePage() {
         </div>
       )}
 
-      {gameOver && !isFinished && (
+      {gameOver && (
         <div className="px-4 pb-6 pt-3 safe-bottom max-w-lg mx-auto w-full">
           <button
             onClick={() => navigate({ to: '/game-over/$gameId', params: { gameId } })}
@@ -320,7 +322,7 @@ function GamePage() {
       )}
 
       <AnimatePresence>
-        {showModal && !isFinished && (
+        {showModal && (!isFinished || editingRound) && (
           <RoundEntryModal
             game={currentGame}
             roundNumber={currentRound}
@@ -346,11 +348,26 @@ function GamePage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {confirmDeleteId && (
+        {actionRound && (
+          <RoundActionSheet
+            roundNumber={actionRound.round_number}
+            onEdit={() => openEditModal(actionRound)}
+            onDelete={() => {
+              setConfirmDelete(actionRound)
+              setActionRound(null)
+            }}
+            onClose={() => setActionRound(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDelete && (
           <ConfirmDialog
-            message="Bu eli silmek istediğinizden emin misiniz?"
-            onCancel={() => setConfirmDeleteId(null)}
-            onConfirm={() => handleDeleteRound(confirmDeleteId)}
+            message={`${confirmDelete.round_number}. eli silmek istediğinizden emin misiniz?`}
+            detail={isFinished ? DELETE_REOPENS_HINT : undefined}
+            onCancel={() => setConfirmDelete(null)}
+            onConfirm={() => handleDeleteRound(confirmDelete)}
           />
         )}
       </AnimatePresence>
@@ -365,11 +382,8 @@ function ScoreTable({
   currentRound,
   totalRounds,
   savedPlayers,
-  readOnly,
-  openMenuId,
-  onMenuToggle,
-  onEdit,
-  onDelete,
+  hideTotals,
+  onRoundTap,
 }: {
   players: string[]
   rounds: Round[]
@@ -377,11 +391,8 @@ function ScoreTable({
   currentRound: number
   totalRounds: number
   savedPlayers: SavedPlayer[]
-  readOnly?: boolean
-  openMenuId: string | null
-  onMenuToggle: (id: string | null) => void
-  onEdit: (round: Round) => void
-  onDelete: (id: string) => void
+  hideTotals: boolean
+  onRoundTap: (round: Round) => void
 }) {
   const navigate = useNavigate()
   const colWidth = players.length <= 2 ? 'flex-1' : players.length === 3 ? 'w-1/3' : 'w-1/4'
@@ -412,7 +423,7 @@ function ScoreTable({
             </div>
           )
         })}
-        {readOnly ? <div className="w-2 shrink-0" /> : <div className="w-8 shrink-0" />}
+        <div className="w-8 shrink-0" />
       </div>
 
       {rounds.map((round, idx) => (
@@ -422,11 +433,7 @@ function ScoreTable({
           players={players}
           colWidth={colWidth}
           striped={idx % 2 !== 0}
-          readOnly={readOnly}
-          menuOpen={openMenuId === round.id}
-          onMenuToggle={() => onMenuToggle(openMenuId === round.id ? null : round.id)}
-          onEdit={() => onEdit(round)}
-          onDelete={() => onDelete(round.id)}
+          onTap={() => onRoundTap(round)}
         />
       ))}
 
@@ -452,24 +459,30 @@ function ScoreTable({
                 )}
               </div>
             ))}
-            {readOnly ? <div className="w-2 shrink-0" /> : <div className="w-8 shrink-0" />}
+            <div className="w-8 shrink-0" />
           </div>
         )
       })}
 
-      <div className="flex bg-[#0f3460] border-t-2 border-[#2d3748]">
-        <div className="w-10 shrink-0" />
+      <div className="flex items-center bg-[#0f3460] border-t-2 border-[#2d3748]">
+        <div className="w-10 shrink-0 flex items-center justify-center">
+          <TotalsToggle />
+        </div>
         {players.map((player) => {
           const total = totals[player] ?? 0
           return (
             <div key={player} className={`${colWidth} py-3 px-1 text-center`}>
-              <p className={`text-sm font-bold ${total < 0 ? 'text-green-400' : total > 0 ? 'text-red-400' : 'text-white'}`}>
-                {total}
-              </p>
+              {hideTotals ? (
+                <HiddenTotal className="text-sm" />
+              ) : (
+                <p className={`text-sm font-bold ${total < 0 ? 'text-green-400' : total > 0 ? 'text-red-400' : 'text-white'}`}>
+                  {total}
+                </p>
+              )}
             </div>
           )
         })}
-        {readOnly ? <div className="w-2 shrink-0" /> : <div className="w-8 shrink-0" />}
+        <div className="w-8 shrink-0" />
       </div>
     </div>
   )
@@ -480,44 +493,20 @@ function RoundRow({
   players,
   colWidth,
   striped,
-  readOnly,
-  menuOpen,
-  onMenuToggle,
-  onEdit,
-  onDelete,
+  onTap,
 }: {
   round: Round
   players: string[]
   colWidth: string
   striped: boolean
-  readOnly?: boolean
-  menuOpen: boolean
-  onMenuToggle: () => void
-  onEdit: () => void
-  onDelete: () => void
+  onTap: () => void
 }) {
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const startLongPress = () => {
-    if (readOnly) return
-    longPressTimer.current = setTimeout(() => onMenuToggle(), 500)
-  }
-
-  const cancelLongPress = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current)
-  }
-
   return (
-    <div
-      className={`relative flex border-b border-[#2d3748]/50 ${striped ? 'bg-[#0f3460]/20' : ''}`}
-      onTouchStart={startLongPress}
-      onTouchEnd={cancelLongPress}
-      onTouchMove={cancelLongPress}
-      onContextMenu={(e) => {
-        if (readOnly) return
-        e.preventDefault()
-        onMenuToggle()
-      }}
+    <button
+      type="button"
+      onClick={onTap}
+      aria-label={`${round.round_number}. el`}
+      className={`w-full flex text-left border-b border-[#2d3748]/50 active:bg-[#e94560]/10 ${striped ? 'bg-[#0f3460]/20' : ''}`}
     >
       <div className="w-10 shrink-0 flex items-center justify-center">
         <span className="text-[#718096] text-xs">{round.round_number}</span>
@@ -533,78 +522,9 @@ function RoundRow({
           </div>
         )
       })}
-      {!readOnly && (
-        <div className="w-8 shrink-0 flex items-center justify-center relative">
-          <button
-            type="button"
-            onClick={onMenuToggle}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-[#718096] hover:text-white hover:bg-[#0f3460]"
-          >
-            <MoreVertical size={14} />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-8 z-20 bg-[#0f3460] border border-[#2d3748] rounded-xl shadow-xl overflow-hidden min-w-[120px]">
-              <button
-                type="button"
-                onClick={onEdit}
-                className="w-full px-4 py-2.5 text-left text-sm text-white hover:bg-[#16213e]"
-              >
-                Düzenle
-              </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                className="w-full px-4 py-2.5 text-left text-sm text-red-400 hover:bg-[#16213e]"
-              >
-                Sil
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ConfirmDialog({
-  message,
-  onCancel,
-  onConfirm,
-}: {
-  message: string
-  onCancel: () => void
-  onConfirm: () => void
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center px-4"
-    >
-      <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
-      <motion.div
-        initial={{ scale: 0.9 }}
-        animate={{ scale: 1 }}
-        exit={{ scale: 0.9 }}
-        className="relative bg-[#16213e] border border-[#2d3748] rounded-2xl p-5 max-w-sm w-full"
-      >
-        <p className="text-white text-center mb-5">{message}</p>
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 bg-[#0f3460] text-[#a0aec0] font-semibold py-3 rounded-xl"
-          >
-            İptal
-          </button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl"
-          >
-            Sil
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
+      <div className="w-8 shrink-0 flex items-center justify-center text-[#718096]">
+        <MoreVertical size={14} />
+      </div>
+    </button>
   )
 }

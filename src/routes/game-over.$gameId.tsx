@@ -18,7 +18,7 @@ import {
 } from '@/lib/gameTypes'
 import { getBankoSummaryLines } from '@/lib/bankoluStatsUtils'
 import { getSayiliStartScore } from '@/lib/teamStatsUtils'
-import { Home, RotateCcw, Share2 } from 'lucide-react'
+import { Home, RotateCcw, Share2, Pencil } from 'lucide-react'
 import { BackButton } from '@/components/layout/BackButton'
 import { ShareCard } from '@/components/ShareCard'
 import { shareGameResult } from '@/lib/shareUtils'
@@ -315,7 +315,8 @@ function GameOverPage() {
           onClick={() => navigate({ to: '/game/$gameId', params: { gameId } })}
           className="w-full bg-[#0f3460] border border-[#2d3748] hover:border-[#e94560]/40 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base transition-colors"
         >
-          Yazbozu Gör →
+          <Pencil size={20} />
+          Yazbozu Gör ve Düzelt
         </button>
         <button
           onClick={handleReplay}
